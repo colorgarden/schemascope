@@ -126,17 +126,109 @@ export const TYPE_NAMES = {
 // 未列出的方块视为单层贴图（等于方块本体 region）。
 // -----------------------------------------------------------------------------
 export const LAYERS = {
+  // 已有：电池 / 质驱 / 储罐（保持不动）
   battery: ["battery", "battery-top"],
   "battery-large": ["battery-large", "battery-large-top"],
   "mass-driver": ["mass-driver-base", "mass-driver"],
-  sorter: ["source-bottom", "sorter"],
-  "inverted-sorter": ["source-bottom", "inverted-sorter"],
-  "liquid-source": ["source-bottom", "liquid-source"],
   "liquid-tank": ["liquid-tank-bottom", "liquid-tank"],
   "reinforced-liquid-tank": [
     "reinforced-liquid-tank-bottom",
     "reinforced-liquid-tank",
   ],
+  // 配置类：无 source-bottom 层（v159.7）；liquid-source 由覆盖层处理
+  sorter: ["sorter"],
+  "inverted-sorter": ["inverted-sorter"],
+  "liquid-source": ["liquid-source"],
+
+  // 钻头类（base → rotator → top）
+  "mechanical-drill": ["mechanical-drill", "mechanical-drill-rotator", "mechanical-drill-top"],
+  "pneumatic-drill": ["pneumatic-drill", "pneumatic-drill-rotator", "pneumatic-drill-top"],
+  "laser-drill": ["laser-drill", "laser-drill-rotator", "laser-drill-top"],
+  "blast-drill": ["blast-drill", "blast-drill-rotator", "blast-drill-top"],
+  "water-extractor": ["water-extractor", "water-extractor-rotator", "water-extractor-top"],
+  "oil-extractor": ["oil-extractor", "oil-extractor-rotator", "oil-extractor-top"],
+  pulverizer: ["pulverizer", "pulverizer-rotator", "pulverizer-top"],
+  // 碎石机（额外 rotator-bottom）
+  "cliff-crusher": ["cliff-crusher", "cliff-crusher-rotator-bottom", "cliff-crusher-rotator", "cliff-crusher-top"],
+  "large-cliff-crusher": ["large-cliff-crusher", "large-cliff-crusher-rotator-bottom", "large-cliff-crusher-rotator", "large-cliff-crusher-top"],
+  // 冷凝器（仅 rotator）
+  "turbine-condenser": ["turbine-condenser", "turbine-condenser-rotator"],
+  "vent-condenser": ["vent-condenser", "vent-condenser-rotator"],
+  // 仅 top
+  "impact-drill": ["impact-drill", "impact-drill-top"],
+  "eruption-drill": ["eruption-drill", "eruption-drill-top"],
+  "plasma-bore": ["plasma-bore", "plasma-bore-top"],
+  "large-plasma-bore": ["large-plasma-bore", "large-plasma-bore-top"],
+
+  // 生产类（base → top）
+  kiln: ["kiln", "kiln-top"],
+  "plastanium-compressor": ["plastanium-compressor", "plastanium-compressor-top"],
+  "silicon-crucible": ["silicon-crucible", "silicon-crucible-top"],
+  "silicon-smelter": ["silicon-smelter", "silicon-smelter-top"],
+  "slag-incinerator": ["slag-incinerator", "slag-incinerator-top"],
+  "spore-press": ["spore-press", "spore-press-top"],
+  "surge-smelter": ["surge-smelter", "surge-smelter-top"],
+  cultivator: ["cultivator", "cultivator-top"],
+
+  // 电力类（base → top）
+  "combustion-generator": ["combustion-generator", "combustion-generator-top"],
+  "steam-generator": ["steam-generator", "steam-generator-top"],
+  "differential-generator": ["differential-generator", "differential-generator-top"],
+  "thorium-reactor": ["thorium-reactor", "thorium-reactor-top"],
+  "rtg-generator": ["rtg-generator", "rtg-generator-top"],
+  illuminator: ["illuminator", "illuminator-top"],
+
+  // 防御类（base → top；force-projector / shock-mine 不处理）
+  mender: ["mender", "mender-top"],
+  "mend-projector": ["mend-projector", "mend-projector-top"],
+  "overdrive-projector": ["overdrive-projector", "overdrive-projector-top"],
+  "overdrive-dome": ["overdrive-dome", "overdrive-dome-top"],
+
+  // 单位工厂/重构类（base → top）
+  "additive-reconstructor": ["additive-reconstructor", "additive-reconstructor-top"],
+  "multiplicative-reconstructor": ["multiplicative-reconstructor", "multiplicative-reconstructor-top"],
+  "exponential-reconstructor": ["exponential-reconstructor", "exponential-reconstructor-top"],
+  "tetrative-reconstructor": ["tetrative-reconstructor", "tetrative-reconstructor-top"],
+  "mech-fabricator": ["mech-fabricator", "mech-fabricator-top"],
+  "mech-refabricator": ["mech-refabricator", "mech-refabricator-top"],
+  "mech-assembler": ["mech-assembler", "mech-assembler-top"],
+  "ship-fabricator": ["ship-fabricator", "ship-fabricator-top"],
+  "ship-refabricator": ["ship-refabricator", "ship-refabricator-top"],
+  "ship-assembler": ["ship-assembler", "ship-assembler-top"],
+  "tank-fabricator": ["tank-fabricator", "tank-fabricator-top"],
+  "tank-refabricator": ["tank-refabricator", "tank-refabricator-top"],
+  "tank-assembler": ["tank-assembler", "tank-assembler-top"],
+  "prime-refabricator": ["prime-refabricator", "prime-refabricator-top"],
+  "basic-assembler-module": ["basic-assembler-module", "basic-assembler-module-top"],
+  "unit-cargo-unload-point": ["unit-cargo-unload-point", "unit-cargo-unload-point-top"],
+
+  // 载荷类（base → top；payload-conveyor 系列不处理）
+  constructor: ["constructor", "constructor-top"],
+  "large-constructor": ["large-constructor", "large-constructor-top"],
+  deconstructor: ["deconstructor", "deconstructor-top"],
+  "small-deconstructor": ["small-deconstructor", "small-deconstructor-top"],
+  "payload-loader": ["payload-loader", "payload-loader-top"],
+  "payload-unloader": ["payload-unloader", "payload-unloader-top"],
+  "payload-router": ["payload-router", "payload-router-top"],
+  "payload-source": ["payload-source", "payload-source-top"],
+  "payload-void": ["payload-void", "payload-void-top"],
+  "payload-mass-driver": ["payload-mass-driver", "payload-mass-driver-top"],
+  "large-payload-mass-driver": ["large-payload-mass-driver", "large-payload-mass-driver-top"],
+  "reinforced-payload-router": ["reinforced-payload-router", "reinforced-payload-router-top"],
+
+  // 管道类（base → top）
+  "duct-router": ["duct-router", "duct-router-top"],
+  "duct-unloader": ["duct-unloader", "duct-unloader-top"],
+  "overflow-duct": ["overflow-duct", "overflow-duct-top"],
+  "underflow-duct": ["underflow-duct", "underflow-duct-top"],
+  "surge-router": ["surge-router", "surge-router-top"],
+
+  // 其它
+  wave: ["wave", "wave-top"],
+  tsunami: ["tsunami", "tsunami-top"],
+  sublimate: ["sublimate", "sublimate-top"],
+  thruster: ["thruster", "thruster-top"],
+  "liquid-overflow-gate": ["liquid-overflow-gate", "liquid-overflow-gate-top"],
 };
 
 // 辅助贴图相对 core/assets-raw/ 的路径兜底表（sprite_index.json 未索引时使用）。

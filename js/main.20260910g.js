@@ -26,7 +26,7 @@ import { blockDisplayName as resolveBlockDisplayName } from "./names.js";
 import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260910f";
+const APP_VERSION = "20260910g";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -1167,7 +1167,8 @@ async function renderCurrent(schem) {
     warns.push(`贴图缺失：${missing.slice(0, 6).join("、")}${missing.length > 6 ? "…" : ""}`);
   }
   if (unknown.length) {
-    warns.push(`未识别方块（可能缺少模组）：${unknown.slice(0, 6).join("、")}${unknown.length > 6 ? "…" : ""}`);
+    const names = unknown.map((b) => blockDisplayName(b));
+    warns.push(`未识别方块（可能缺少模组）：${names.slice(0, 6).join("、")}${names.length > 6 ? "…" : ""}`);
   }
   setStatus(warns.length ? `渲染完成${cacheNote}（${warns.join("；")}）` : `渲染完成${cacheNote}。`);
 }
@@ -1200,6 +1201,13 @@ function modBlockCount(m) {
   return n;
 }
 
+/** 模组显示标题：优先内部名（通常中文），displayName 不同则括注。 */
+function modDisplayTitle(m) {
+  const name = m.name || "";
+  const dn = m.displayName || "";
+  return dn && dn !== name ? `${name}（${dn}）` : name;
+}
+
 function renderModList() {
   if (!els.modList) return;
   els.modList.replaceChildren();
@@ -1212,7 +1220,7 @@ function renderModList() {
     info.className = "mod-info";
     const title = document.createElement("div");
     title.className = "mod-name";
-    title.textContent = `${m.displayName || m.name}（${m.name}）`;
+    title.textContent = modDisplayTitle(m);
     const sub = document.createElement("div");
     sub.className = "mod-sub";
     sub.textContent = `${modBlockCount(m)} 方块 · 贴图 ${m.sprites.size}（按需加载） · ${m.fileName}`;
@@ -1244,7 +1252,7 @@ async function addModFiles(files) {
       mods = mods.filter((x) => x.fileName !== file.name);
       mods.push(m);
       await putMod(file.name, new Blob([buf]));
-      names.push(`${m.displayName || m.name}（${modBlockCount(m)} 方块 / 贴图 ${m.sprites.size}）`);
+      names.push(`${modDisplayTitle(m)}（${modBlockCount(m)} 方块 / 贴图 ${m.sprites.size}）`);
     } catch (e) {
       fail++;
       console.error(e);

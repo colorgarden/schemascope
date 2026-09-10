@@ -1096,7 +1096,7 @@ function testConfigRender() {
     unloader: clear(),
     "unloader-center": mk(255, 255, 255, 255),
     "liquid-source": clear(),
-    "source-bottom": clear(),
+    "source-bottom": mk(74, 75, 83, 255),
     "cross-full": mk(10, 200, 10, 255),
     cross: mk(200, 10, 10, 255),
     fluid: mk(255, 255, 255, 255),
@@ -1149,6 +1149,38 @@ function testConfigRender() {
     CONFIG_OVERLAY.unloader === "centerTint" &&
       CONFIG_OVERLAY["duct-unloader"] === "centerTint" &&
       CONFIG_OVERLAY["liquid-source"] === "liquidSource"
+  );
+
+  // LAYERS 修正：sorter/inverted-sorter/liquid-source 不得含 source-bottom
+  check("LAYERS.sorter 不含 source-bottom", JSON.stringify(LAYERS.sorter) === JSON.stringify(["sorter"]), JSON.stringify(LAYERS.sorter));
+  check("LAYERS.inverted-sorter 不含 source-bottom", JSON.stringify(LAYERS["inverted-sorter"]) === JSON.stringify(["inverted-sorter"]), JSON.stringify(LAYERS["inverted-sorter"]));
+  check("LAYERS.liquid-source 不含 source-bottom", JSON.stringify(LAYERS["liquid-source"]) === JSON.stringify(["liquid-source"]), JSON.stringify(LAYERS["liquid-source"]));
+
+  // 双层建筑抽查
+  check(
+    "LAYERS.silicon-smelter = [base, -top]",
+    JSON.stringify(LAYERS["silicon-smelter"]) === JSON.stringify(["silicon-smelter", "silicon-smelter-top"]),
+    JSON.stringify(LAYERS["silicon-smelter"])
+  );
+  check(
+    "LAYERS.mechanical-drill 含 rotator+top",
+    JSON.stringify(LAYERS["mechanical-drill"]) === JSON.stringify(["mechanical-drill", "mechanical-drill-rotator", "mechanical-drill-top"]),
+    JSON.stringify(LAYERS["mechanical-drill"])
+  );
+  check("LAYERS.thruster = [thruster, -top]", JSON.stringify(LAYERS.thruster) === JSON.stringify(["thruster", "thruster-top"]), JSON.stringify(LAYERS.thruster));
+  check("LAYERS 不含 force-projector", !("force-projector" in LAYERS));
+  check("LAYERS 不含 shock-mine", !("shock-mine" in LAYERS));
+  check("LAYERS 不含 payload-conveyor", !("payload-conveyor" in LAYERS));
+  check("LAYERS 保留 battery（回归）", JSON.stringify(LAYERS.battery) === JSON.stringify(["battery", "battery-top"]));
+
+  // 双层冒烟：silicon-smelter 的 -top 第二层被绘制
+  const topSprites = { "silicon-smelter": clear(), "silicon-smelter-top": mk(1, 2, 3, 255) };
+  const topSchem = { width: 1, height: 1, tiles: [{ block: "silicon-smelter", x: 0, y: 0, rot: 0, config_type: "null", config: null }] };
+  const topRes = renderSchematic(topSchem, topSprites, { scale: 1, pad: 0, transparent: true, grid: false });
+  check(
+    "silicon-smelter -top 第二层被绘制",
+    topRes.rgba[0] === 1 && topRes.rgba[1] === 2 && topRes.rgba[2] === 3,
+    [topRes.rgba[0], topRes.rgba[1], topRes.rgba[2]].join(",")
   );
 }
 

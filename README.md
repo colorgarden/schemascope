@@ -159,6 +159,11 @@ UI emoji → 去掉。
     铺满整格并以液体色着色 → **重画一次该方块 sprite**（最上层）。
   - `CONTENT_COLORS` 按官方 `Items.java` / `Liquids.java`（v159.7）补全物品与液体颜色；
     `opts.config_icons=false` 时上述配置贴图全部跳过。
+- **多层贴图 `LAYERS`（base → …，普通中心叠加、无 tint）**：覆盖钻头类（`-rotator` / `-top`，
+  碎石机含 `-rotator-bottom`）、生产/电力/防御/单位工厂/载荷/管道等双层建筑（`[base, base-top]`），
+  以及 `thruster`、`wave`/`tsunami`/`sublimate`、`liquid-overflow-gate` 等。
+  `sorter` / `inverted-sorter` / `liquid-source` **不含 `source-bottom`**（v159.7 中该层并不存在；
+  `liquid-source` 的 `source-bottom` 由配置覆盖层在 sprite 之后绘制），否则不透明灰层会盖住配置色。
 
 ## 六、模组支持
 
@@ -308,7 +313,7 @@ python3 -m http.server 8000
 
 ```bash
 cd web
-node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/history.js js/main.20260910f.js
+node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/history.js js/main.20260910g.js
 node test/parse_test.mjs
 ```
 
