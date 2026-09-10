@@ -42,6 +42,29 @@ body {
   padding: 20px 16px 48px;
 }
 
+/* ---- 布局：移动端单列（桌面双栏见文件末尾 @media min-width:1024px） ----
+   移动端 col-left/col-right 用 display:contents“透明”，子面板直接作为
+   .layout 的 flex 项，并通过 order 还原既有单列顺序，保证移动端零回归。 */
+.layout {
+  display: flex;
+  flex-direction: column;
+}
+
+.col-left,
+.col-right {
+  display: contents;
+}
+
+.panel-input { order: 1; }
+.panel-mod { order: 2; }
+.panel-options { order: 3; }
+.meta-panel { order: 4; }
+.panel-req { order: 5; }
+.status { order: 6; }
+.panel-procs { order: 7; }
+.panel-render { order: 8; }
+.panel-legend { order: 9; }
+
 header {
   border-bottom: 1px solid var(--line);
   padding-bottom: 14px;
@@ -306,6 +329,17 @@ h1 .sub {
   overflow: hidden;
   background: #0e1117;
   line-height: 0;
+  text-align: center;
+}
+
+/* stage-fit 精确包裹 canvas：#spots 以 inset:0 覆盖它，
+   百分比热区因此始终与 canvas 的显示尺寸同步。 */
+.stage-fit {
+  position: relative;
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  line-height: 0;
 }
 
 .stage canvas {
@@ -543,15 +577,45 @@ footer p + p {
   margin-top: 6px;
 }
 
-.clear-cache {
-  color: var(--muted);
-  font-size: 12px;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 18px;
 }
 
-.clear-cache:hover {
+.footer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: none;
+  border-radius: 6px;
+  padding: 2px 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.footer-link:hover {
   color: var(--accent);
+  background: rgba(94, 234, 212, 0.08);
+}
+
+.footer-link:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.gh-icon {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+}
+
+.clear-cache {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 /* ---- tooltip ---- */
@@ -707,5 +771,98 @@ footer p + p {
   }
   .modal-body pre {
     font-size: 11.5px;
+  }
+}
+
+/* =============================================================================
+   桌面端（≥1024px）：双栏布局
+   左栏 = 输入 / 模组 / 控制项 / 处理器按钮（独立滚动，sticky）
+   右栏 = 信息(+标签) / 耗材 / 状态 / canvas 预览 / 图例
+   ============================================================================= */
+@media (min-width: 1024px) {
+  .wrap {
+    max-width: 1600px;
+    padding: 24px 24px 56px;
+  }
+
+  header {
+    padding-bottom: 16px;
+    margin-bottom: 18px;
+  }
+
+  h1 {
+    font-size: 24px;
+  }
+
+  h1 .sub {
+    font-size: 14px;
+  }
+
+  .lead {
+    font-size: 14px;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(340px, 410px) minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+  }
+
+  .col-left {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    position: sticky;
+    top: 16px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    padding-right: 4px;
+    scrollbar-width: thin;
+  }
+
+  .col-right {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+  }
+
+  /* 右栏顺序：信息(+标签) → 状态 → 预览 → 图例 → 耗材 */
+  .col-right .meta-panel { order: 1; }
+  .col-right .status { order: 2; }
+  .col-right .panel-render { order: 3; }
+  .col-right .panel-legend { order: 4; }
+  .col-right .panel-req { order: 5; }
+
+  /* 用 gap 统管列内间距，去掉面板自带的 margin */
+  .col-left .panel,
+  .col-right .panel {
+    margin-bottom: 0;
+  }
+
+  .col-right .status {
+    padding: 8px 12px;
+    margin: -4px 0 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(11, 13, 18, 0.92);
+    backdrop-filter: blur(4px);
+    position: sticky;
+    top: 8px;
+    z-index: 6;
+  }
+
+  /* canvas 由 JS 依据 72vh 上限与容器宽度设置 stage-fit 尺寸；此处兜底比例填充 */
+  .stage canvas {
+    height: 100%;
+  }
+
+  .requirements {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  footer {
+    margin-top: 28px;
   }
 }

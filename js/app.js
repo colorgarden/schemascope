@@ -40,6 +40,7 @@ const els = {
   procs: $("procs"),
   procsWrap: $("procs-wrap"),
   stage: $("stage"),
+  stageFit: $("stage-fit"),
   canvas: $("canvas"),
   spots: $("spots"),
   legend: $("legend"),
@@ -461,8 +462,47 @@ function renderToCanvas(schem) {
   canvas.height = result.height;
   const ctx = canvas.getContext("2d");
   ctx.putImageData(new ImageData(result.rgba, result.width, result.height), 0, 0);
+  fitStage();
   return result;
 }
+
+/**
+ * 桌面端：按容器宽度与 72vh 高度上限计算 canvas 显示尺寸，
+ * 交给 .stage-fit 作为精确尺寸；#spots 以 inset:0 覆盖它，
+ * 百分比热区因此与 canvas 缩放严格同步。移动端交给 CSS（width:100%）。
+ */
+function fitStage() {
+  const fit = els.stageFit;
+  const canvas = els.canvas;
+  if (!fit || !canvas || !canvas.width || !els.stage) return;
+  if (window.matchMedia("(max-width: 1023px)").matches) {
+    fit.style.width = "";
+    fit.style.height = "";
+    return;
+  }
+  const availW = els.stage.clientWidth;
+  if (availW <= 0) return;
+  const maxH = Math.round(window.innerHeight * 0.72);
+  const ratio = canvas.height / canvas.width;
+  let w = availW;
+  let h = w * ratio;
+  if (h > maxH) {
+    h = maxH;
+    w = h / ratio;
+  }
+  fit.style.width = Math.max(1, Math.floor(w)) + "px";
+  fit.style.height = Math.max(1, Math.floor(h)) + "px";
+}
+
+// 窗口尺寸变化 / 旋转屏幕时重新适配（rAF 节流）
+let _fitRaf = 0;
+window.addEventListener("resize", () => {
+  if (_fitRaf) return;
+  _fitRaf = requestAnimationFrame(() => {
+    _fitRaf = 0;
+    fitStage();
+  });
+});
 
 function buildSpriteMap() {
   // spriteCache 里存的就是 render 需要的结构
@@ -1084,7 +1124,15 @@ els.overlay.addEventListener("click", (e) => {
   if (e.target === els.overlay) closeModal();
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") closeModal();
+  if (e.key === "Escape") {
+    closeModal();
+    return;
+  }
+  // 快捷触发「解析并渲染」
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+    e.preventDefault();
+    els.parseBtn.click();
+  }
 });
 els.copyBtn.addEventListener("click", () => {
   const done = () => {
