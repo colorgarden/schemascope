@@ -72,9 +72,7 @@ web/
 > 3. 更新 `index.html`（`js/v<VER>/main.js?v=<VER>`、`css/style.css?v=<VER>`）、
 >    `test/parse_test.mjs` 的导入路径与 `README` 中的路径；
 >    页脚版本由 JS 注入（`#footer-ver`），能显示即证明新脚本已加载。
-> 4. 同步生成版本化入口页：`mkdir v<VER> && cp index.html v<VER>/index.html` 并确保页内含
->    `<base href="../">`（资源指回仓库根）。被困在旧缓存里的浏览器可访问
->    `https://<用户>.github.io/<仓库>/v<VER>/`（全新路径，任何缓存都无法命中）获得最新版本。
+> 4. 若用户仍看到旧版本，请其清理浏览器缓存（或换浏览器/无痕模式）后重试。
 
 ## 二、可选：自托管贴图实现离线（推荐手机使用）
 
