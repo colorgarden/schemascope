@@ -229,8 +229,11 @@ UI emoji → 去掉。
 - 时间戳记录在 `localStorage.msch-cache-meta`。
 - 不可用时（非 https、无 `caches` API、隐私模式、`localStorage` 被禁）自动回退到普通
   `fetch` + 会话内内存缓存，不报错。
-- 状态栏会显示「（缓存命中 X 张）」；页脚「清除缓存」会删除所有 `msch-cache-*`
-  （含旧版本）与时间戳。
+- 状态栏会显示「（缓存命中 X 张）」。
+- 页脚「清除缓存」：删除**全部** `msch-*` Cache Storage 持久缓存（贴图、模组 zip、含历史版本）
+  与时间戳记录，随后**带 `?fresh=` 参数强制刷新页面**（`location.replace`，不污染历史栈），
+  以绕过浏览器/代理的 HTTP 缓存取回最新 HTML 与版本化脚本。
+  **不会**清除历史记录、透明度、镜像源偏好（这些有各自入口：历史「清空」、滑杆、贴图源下拉）。
 
 ### 镜像源（手动选择 + 自动切换 + 超时）
 
@@ -285,7 +288,7 @@ python3 -m http.server 8000
 
 ```bash
 cd web
-node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/history.js js/main.20260910c.js
+node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/history.js js/main.20260910d.js
 node test/parse_test.mjs
 ```
 

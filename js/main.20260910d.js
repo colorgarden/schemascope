@@ -26,7 +26,7 @@ import { blockDisplayName as resolveBlockDisplayName } from "./names.js";
 import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260910c";
+const APP_VERSION = "20260910d";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -1572,15 +1572,21 @@ els.exportBtn.addEventListener("click", () => {
   }, "image/png");
 });
 
-// 清除持久化缓存
+// 清除持久化缓存 + 强制刷新页面（绕过 HTTP 缓存的 HTML/JS）
 if (els.clearCache) {
   els.clearCache.addEventListener("click", async (e) => {
     e.preventDefault();
     await clearPersistentCache();
-    setStatus("缓存已清除。");
+    setStatus("缓存已清除，正在强制刷新…");
     setTimeout(() => {
-      if (els.status.textContent === "缓存已清除。") setStatus("");
-    }, 2000);
+      try {
+        const u = new URL(location.href);
+        u.searchParams.set("fresh", Date.now().toString(36));
+        location.replace(u.toString());
+      } catch (err) {
+        location.replace(location.pathname + "?fresh=" + Date.now());
+      }
+    }, 350);
   });
 }
 
