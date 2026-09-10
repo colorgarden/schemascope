@@ -17,6 +17,7 @@ web/
   index.html            页面入口
   css/style.css         深色中文界面样式（含 MindustryIcons @font-face）
   js/data.js            常量与中文映射（TILE/LAYERS/BLOCK_CN/CONTENT_CN/…）
+  js/cn_data.js         全量官方中文名（由 bundle_zh_CN.properties 生成）
   js/inflate.js         zlib 解压封装（DecompressionStream）
   js/parser.js          容器解析 + TypeIO + contentMap + 处理器逻辑提取
   js/render.js          渲染器（与 msch.py 像素级一致）
@@ -126,6 +127,10 @@ UI emoji → 去掉。
 
 ## 五、图标与耗材数据
 
+- **全量官方中文名 `js/cn_data.js`**：由官方 `bundle_zh_CN.properties` 生成
+  （`CN_BLOCKS` 412 条 / `CN_ITEMS` 22 条 / `CN_LIQUIDS` 11 条）。`js/data.js` 的
+  `BLOCK_CN`/`CONTENT_CN` 以之为准（旧手写小表仅用于补缺，不覆盖官方名），因此
+  `overflow-gate`→溢流门、`underflow-gate`→反向溢流门、`duct` 等均有正确中文名。
 - **原版图标 `assets/icons/<码点>.png`**：从官方 `assets.jar` 导出 530 个 PUA 内容图标，
   补齐构建期合成的 `-ui` 区域（如 smite / renale / metal-tiles-13 等仓库中无源文件的图标）。
   `js/icons_data.js` 的 `ICON_LOCAL_CODES` 记录这些码点；`richText` 对命中码点优先使用
@@ -176,7 +181,9 @@ UI emoji → 去掉。
   时按该尺寸占位；模组方块多层启发式（`<base>-base` 在前、`<base>-top` 在后）仅在
   vanilla `LAYERS` 未定义该块时生效。
 - **耗材集成**：总耗材表 = vanilla `BLOCK_REQUIREMENTS` + 所有模组方块（内部名与 base 都注册）；
-  物品名优先取模组 bundle `item.<内部名>.name`，物品图标优先模组贴图（`item-<ref>` / `<ref>`）。
+  物品名优先取模组 bundle `item.<内部名>.name`，物品图标优先模组贴图，候选顺序为
+  `item-<ref>` → `<ref>` → `<ref>1` → `item-<ref>1`（后两个为**序号帧**贴图兜底，
+  如 `裂位能1.png`、`二级协议1.png`）；模组方块贴图候选同样在最后追加 `<name>1`。
 - **限制**：JSON / 混合模组可完整支持建筑与耗材；**纯 dex 模组**（无 JSON 方块定义）
   只能按文件名使用其贴图，无法获取建筑尺寸与耗材。
 - 模组变化后会清空内存贴图缓存并自动重渲染当前蓝图；未识别方块会在状态栏提示可能缺少的模组。
@@ -259,7 +266,7 @@ python3 -m http.server 8000
 
 ```bash
 cd web
-node --check js/data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/app.js
+node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/app.js
 node test/parse_test.mjs
 ```
 

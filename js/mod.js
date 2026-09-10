@@ -110,8 +110,9 @@ function basename(path) {
 }
 
 /**
- * 模组贴图候选名：给定名；若以某个已加载模组名 + "-" 开头，再去前缀尝试。
- * 模组名长者优先（更具体的前缀先剥）。
+ * 模组方块贴图候选名：给定名；若以某个已加载模组名 + "-" 开头，再去前缀尝试。
+ * 模组名长者优先（更具体的前缀先剥）。最后追加各候选名的 `<c>1` 变体，
+ * 作为动画/序号帧贴图（如 `裂位能1.png`）的兜底。
  */
 export function modSpriteCandidates(name, modNames) {
   const out = [name];
@@ -123,7 +124,20 @@ export function modSpriteCandidates(name, modNames) {
       if (s && !out.includes(s)) out.push(s);
     }
   }
+  // 序号帧兜底：保持 plain 候选在前，单帧结果不受影响
+  for (const c of out.slice()) {
+    const f = c + "1";
+    if (!out.includes(f)) out.push(f);
+  }
   return out;
+}
+
+/**
+ * 模组物品图标候选名（按序）：`item-<name>` → `<name>` → `<name>1` → `item-<name>1`。
+ * 后两者为序号帧贴图兜底（如 `裂位能1.png`、`二级协议1.png`）。
+ */
+export function modItemCandidates(name) {
+  return [`item-${name}`, name, `${name}1`, `item-${name}1`];
 }
 
 /**

@@ -21,7 +21,7 @@ import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, put
 import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js";
 import { requirementsList } from "./requirements.js";
 import { BLOCK_REQUIREMENTS } from "./requirements_data.js";
-import { parseMod, modSpriteCandidates } from "./mod.js";
+import { parseMod, modSpriteCandidates, modItemCandidates } from "./mod.js";
 import { blockDisplayName as resolveBlockDisplayName } from "./names.js";
 
 // -----------------------------------------------------------------------------
@@ -381,6 +381,21 @@ async function findModSprite(name) {
   return (await modOverrideSprite(name)) || (await modNormalSprite(name));
 }
 
+/** 精确键查找（不做候选/去前缀展开）：override 优先，再 normal。 */
+async function findModSpriteExact(key) {
+  const ow = modOverrideIndex.get(key);
+  if (ow) {
+    const b = await ow.spritesOverride.get(key);
+    if (b) return b;
+  }
+  const nw = modNormalIndex.get(key);
+  if (nw) {
+    const b = await nw.sprites.get(key);
+    if (b) return b;
+  }
+  return null;
+}
+
 /** 方块是否有已知定义（vanilla 索引 / sprites / 模组）。 */
 function isKnownBlock(name) {
   if (spriteIndex.blocks && spriteIndex.blocks[name]) return true;
@@ -406,9 +421,13 @@ function modItemName(ref) {
   return hit || null;
 }
 
-/** 耗材物品图标：优先模组贴图（item-<ref> / <ref>，懒解压），返回 Blob 或 null。 */
+/** 耗材物品图标：优先模组贴图（item-<ref> / <ref> / <ref>1 序号帧兜底，懒解压），返回 Blob 或 null。 */
 async function modItemSprite(ref) {
-  return (await findModSprite(`item-${ref}`)) || (await findModSprite(ref));
+  for (const c of modItemCandidates(ref)) {
+    const b = await findModSpriteExact(c);
+    if (b) return b;
+  }
+  return null;
 }
 
 /**

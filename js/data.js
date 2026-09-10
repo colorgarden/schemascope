@@ -3,6 +3,9 @@
 // 该文件不含任何逻辑，只有纯数据，方便对照核对。
 // =============================================================================
 
+// 全量官方中文名（由 bundle_zh_CN.properties 生成）
+import { CN_BLOCKS, CN_ITEMS, CN_LIQUIDS } from "./cn_data.js";
+
 // CDN 前缀：只用 jsdelivr 的 @master（始终取最新贴图，允许跨域）
 export const CDN_PREFIX = "https://cdn.jsdelivr.net/gh/Anuken/Mindustry@master/";
 
@@ -12,8 +15,8 @@ export const LOCAL_SPRITE_DIR = "assets/sprites/";
 // 每个方块占 32 像素
 export const TILE = 32;
 
-// 方块名 → 中文显示名（取自原版 bundle_zh_CN.properties，未列出的回退英文名）
-export const BLOCK_CN = {
+// 早期手写小表：仅用于补充 CN_BLOCKS 未覆盖的条目（不覆盖官方名）
+const LEGACY_BLOCK_CN = {
   "micro-processor": "微型处理器",
   "logic-processor": "逻辑处理器",
   "hyper-processor": "超核处理器",
@@ -37,8 +40,7 @@ export const BLOCK_CN = {
   conveyor: "传送带",
 };
 
-// 物品/液体名 → 中文显示名
-export const CONTENT_CN = {
+const LEGACY_CONTENT_CN = {
   water: "水",
   "surge-alloy": "巨浪合金",
   copper: "铜",
@@ -60,6 +62,24 @@ export const CONTENT_CN = {
   "blast-compound": "爆炸混合物",
   pyratite: "硫化物",
   "spore-pod": "孢子荚",
+};
+
+function extrasOnly(legacy, official) {
+  const out = {};
+  for (const [k, v] of Object.entries(legacy)) {
+    if (!(k in official)) out[k] = v;
+  }
+  return out;
+}
+
+// 方块名 → 中文显示名（全量官方表；旧表仅补缺）
+export const BLOCK_CN = { ...CN_BLOCKS, ...extrasOnly(LEGACY_BLOCK_CN, CN_BLOCKS) };
+
+// 物品/液体名 → 中文显示名（全量官方表；旧表仅补缺）
+export const CONTENT_CN = {
+  ...CN_ITEMS,
+  ...CN_LIQUIDS,
+  ...extrasOnly(LEGACY_CONTENT_CN, { ...CN_ITEMS, ...CN_LIQUIDS }),
 };
 
 // ContentType 序号 → 中文标签（本蓝图中 0=物品，4=流体）

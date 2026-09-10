@@ -39,7 +39,8 @@ import { simpleHash, createPrefetchManager } from "../js/prefetch.js";
 import { computeRequirements, requirementsList } from "../js/requirements.js";
 import { BLOCK_REQUIREMENTS } from "../js/requirements_data.js";
 import { openZip } from "../js/zip.js";
-import { parseMod, modSpriteCandidates, looseJson, parseRequirements } from "../js/mod.js";
+import { parseMod, modSpriteCandidates, modItemCandidates, looseJson, parseRequirements } from "../js/mod.js";
+import { CN_BLOCKS } from "../js/cn_data.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -544,7 +545,7 @@ async function testMods() {
   })());
   check(
     "modSpriteCandidates 去模组前缀",
-    JSON.stringify(modSpriteCandidates("饱和火力-前沿实验室", ["饱和火力"])) ===
+    JSON.stringify(modSpriteCandidates("饱和火力-前沿实验室", ["饱和火力"]).slice(0, 2)) ===
       JSON.stringify(["饱和火力-前沿实验室", "前沿实验室"]),
     JSON.stringify(modSpriteCandidates("饱和火力-前沿实验室", ["饱和火力"]))
   );
@@ -785,6 +786,21 @@ async function testMods() {
       blockDisplayName("饱和火力-拓断", [m]) === "拓断",
       blockDisplayName("饱和火力-拓断", [m])
     );
+
+    // 序号帧物品图标：裂位能 / 二级协议 需命中 <name>1；硅钢命中 plain
+    const resolveItem = (mods, ref) => {
+      for (const c of modItemCandidates(ref)) {
+        for (const mm of mods) {
+          if (mm.spritesOverride.has(c) || mm.sprites.has(c)) return c;
+        }
+      }
+      return null;
+    };
+    check("物品图标 裂位能 → 裂位能1", resolveItem([m], "裂位能") === "裂位能1", resolveItem([m], "裂位能"));
+    check("物品图标 二级协议 → 二级协议1", resolveItem([m], "二级协议") === "二级协议1", resolveItem([m], "二级协议"));
+    check("物品图标 硅钢 → plain 硅钢", resolveItem([m], "硅钢") === "硅钢", resolveItem([m], "硅钢"));
+    const frameBlob = await m.sprites.get("裂位能1");
+    check("裂位能1 可懒解压为 Blob", !!frameBlob && frameBlob.size > 0, frameBlob && frameBlob.size);
   }
 }
 
@@ -868,6 +884,35 @@ function testGeneric() {
     `r=${res.rgba[mid]} b=${res.rgba[mid + 2]}`
   );
   setModPowerNodes(new Map());
+}
+
+// -----------------------------------------------------------------------------
+// 6c. 全量中文名 + 序号帧物品图标候选
+// -----------------------------------------------------------------------------
+function testCnAndFrames() {
+  console.log("== 中文名 / 序号帧兜底测试 ==");
+  check("中文名 overflow-gate = 溢流门", blockDisplayName("overflow-gate", []) === "溢流门", blockDisplayName("overflow-gate", []));
+  check("中文名 underflow-gate = 反向溢流门", blockDisplayName("underflow-gate", []) === "反向溢流门", blockDisplayName("underflow-gate", []));
+  check("中文名 mass-driver = 质量驱动器", blockDisplayName("mass-driver", []) === "质量驱动器", blockDisplayName("mass-driver", []));
+  check(
+    "中文名 duct = 官方（cn_data）",
+    !!CN_BLOCKS["duct"] && blockDisplayName("duct", []) === CN_BLOCKS["duct"],
+    `${blockDisplayName("duct", [])} / ${CN_BLOCKS["duct"]}`
+  );
+
+  const c1 = modItemCandidates("裂位能");
+  check(
+    "物品候选顺序 item-<name>/<name>/<name>1/item-<name>1",
+    JSON.stringify(c1) === JSON.stringify(["item-裂位能", "裂位能", "裂位能1", "item-裂位能1"]),
+    JSON.stringify(c1)
+  );
+  check("物品候选含 二级协议1", modItemCandidates("二级协议").includes("二级协议1"));
+  const c3 = modItemCandidates("硅钢");
+  check("plain 候选在序号帧之前（硅钢）", c3.indexOf("硅钢") < c3.indexOf("硅钢1"), JSON.stringify(c3));
+
+  const sc = modSpriteCandidates("测试A-星河桥", ["测试A"]);
+  check("方块候选追加 <name>1", sc.includes("测试A-星河桥1") && sc.includes("星河桥1"), JSON.stringify(sc));
+  check("方块 plain 候选在前", sc.indexOf("星河桥") < sc.indexOf("星河桥1"), JSON.stringify(sc));
 }
 
 // -----------------------------------------------------------------------------
@@ -1111,6 +1156,7 @@ async function main() {
   testRequirements();
   await testMods();
   testGeneric();
+  testCnAndFrames();
   await testNet();
 
   console.log("");
