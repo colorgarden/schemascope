@@ -475,7 +475,7 @@ function fitStage() {
   const fit = els.stageFit;
   const canvas = els.canvas;
   if (!fit || !canvas || !canvas.width || !els.stage) return;
-  if (window.matchMedia("(max-width: 1023px)").matches) {
+  if (window.matchMedia("(max-width: 959px)").matches) {
     fit.style.width = "";
     fit.style.height = "";
     return;
