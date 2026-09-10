@@ -156,9 +156,10 @@ export function readObject(r, resolveContent) {
       const pts = [];
       for (let i = 0; i < n; i++) {
         const packed = r.i32();
-        let x = packed & 0xffff;
+        // arc Point2.pack：x 在高 16 位、y 在低 16 位（均为有符号）
+        let x = (packed >> 16) & 0xffff;
         x = x >= 0x8000 ? x - 0x10000 : x;
-        let y = (packed >> 16) & 0xffff;
+        let y = packed & 0xffff;
         y = y >= 0x8000 ? y - 0x10000 : y;
         pts.push([x, y]);
       }
@@ -406,9 +407,10 @@ export async function parseSchematic(input) {
   for (let i = 0; i < total; i++) {
     const bi = r.u8();
     const packed = r.i32();
-    let x = packed & 0xffff;
+    // arc Point2.pack：x 在高 16 位、y 在低 16 位（均为有符号）
+    let x = (packed >> 16) & 0xffff;
     x = x >= 0x8000 ? x - 0x10000 : x;
-    let y = (packed >> 16) & 0xffff;
+    let y = packed & 0xffff;
     y = y >= 0x8000 ? y - 0x10000 : y;
     const cfg = readObject(r, resolve);
     const rot = r.i8();

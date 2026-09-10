@@ -204,7 +204,7 @@ function testRenderUnits() {
   const aOutside = buf[((32 + 6) * cw + 32) * 4 + 3];
   check("光束外无像素", aOutside === 0, `a=${aOutside}`);
 
-  // (e) 桥配对：示例蓝图应得 (2,5)-(6,5) 与 (2,7)-(6,7)
+  // (e) 桥配对：示例蓝图应得 (5,2)-(5,6) 与 (7,2)-(7,6)
   //     用 蓝图.json 的 size 构造占位贴图（无需真实 PNG）
   const { bridgeLayouts } = testBridgePairs();
   check("桥配对数 = 2", bridgeLayouts.length === 2, `${bridgeLayouts.length}`);
@@ -217,8 +217,8 @@ function testRenderUnits() {
     .map((p) => `${p[0][0]},${p[0][1]}-${p[1][0]},${p[1][1]}`)
     .sort();
   check(
-    "桥配对为 (2,5)-(6,5) 与 (2,7)-(6,7)",
-    deepEqual(norm, ["2,5-6,5", "2,7-6,7"]),
+    "桥配对为 (5,2)-(5,6) 与 (7,2)-(7,6)",
+    deepEqual(norm, ["5,2-5,6", "7,2-7,6"]),
     JSON.stringify(norm)
   );
 
@@ -230,11 +230,22 @@ function testRenderUnits() {
     sprites[name] = { w: size * TILE, h: size * TILE, size, rgba: new Uint8ClampedArray(size * TILE * size * TILE * 4), placeholder: false };
   }
   const layout = computeLayout(globalThis.__SCHEM, sprites);
-  // mass-driver @4,6 size3 → lx=3, by=5（应落在布局内）
+  // mass-driver @6,4 size3 → lx=5, by=3（应落在布局内）
   const md = layout.entries.find((e) => e.tile.block === "mass-driver");
-  check("layout mass-driver lx/by", md.lx === 3 && md.by === 5, `${md.lx},${md.by}`);
+  check("layout mass-driver lx/by", md.lx === 5 && md.by === 3, `${md.lx},${md.by}`);
   check("layout cols", layout.cols === layout.max_right - layout.min_lx);
   check("layout rows", layout.rows === layout.max_top - layout.min_by);
+
+  // (f2) 坐标位序回归：所有方块锚点必须落在声明的宽高范围内。
+  // arc Point2.pack 为 x 高 16 位 / y 低 16 位，若位序写反会导致坐标整体越界。
+  const oob = globalThis.__SCHEM.tiles.filter(
+    (t) => t.x < 0 || t.y < 0 || t.x >= globalThis.__SCHEM.width || t.y >= globalThis.__SCHEM.height
+  );
+  check(
+    "所有方块坐标在声明范围内",
+    oob.length === 0,
+    oob.slice(0, 5).map((t) => `${t.block}(${t.x},${t.y})`).join(" ")
+  );
 
   // (g) 网格：应该出现淡白线
   const gbuf = new Uint8ClampedArray(64 * 32 * 4);
