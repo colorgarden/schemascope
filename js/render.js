@@ -11,7 +11,8 @@ import {
   TILE,
   LAYERS,
   OUTLINE_ICON,
-  CENTER_CONFIG_BLOCKS,
+  CONFIG_UNDERLAY,
+  CONFIG_OVERLAY,
   CONTENT_COLORS,
   POWER_BLOCKS,
   POWER_LASER_COLOR,
@@ -222,6 +223,38 @@ export function blendPx(dst, off, r, g, b, a) {
   dst[off + 1] = ifloor((g * a + dst[off + 1] * ia) / 255);
   dst[off + 2] = ifloor((b * a + dst[off + 2] * ia) / 255);
   dst[off + 3] = Math.min(255, a + ifloor((dst[off + 3] * ia) / 255));
+}
+
+/** 用颜色 [r,g,b,a] 填充矩形（对应 Fill.square 的整格填充）。 */
+export function fillRect(buf, cw, ch, x, y, w, h, rgba) {
+  const [r, g, b, a] = rgba;
+  for (let yy = 0; yy < h; yy++) {
+    const ty = y + yy;
+    if (ty < 0 || ty >= ch) continue;
+    for (let xx = 0; xx < w; xx++) {
+      const tx = x + xx;
+      if (tx < 0 || tx >= cw) continue;
+      blendPx(buf, (ty * cw + tx) * 4, r, g, b, a);
+    }
+  }
+}
+
+/** 把 region 贴图平铺填满 w×h（对应 drawTiledFrames 的静态近似）。 */
+export function tileBlit(buf, cw, ch, region, x, y, w, h, rgba, alphaScale = 1) {
+  const rw = region.w;
+  const rh = region.h;
+  for (let yy = 0; yy < h; yy++) {
+    const ty = y + yy;
+    if (ty < 0 || ty >= ch) continue;
+    for (let xx = 0; xx < w; xx++) {
+      const tx = x + xx;
+      if (tx < 0 || tx >= cw) continue;
+      const so = ((yy % rh) * rw + (xx % rw)) * 4;
+      const a = Math.trunc(rgba[so + 3] * alphaScale);
+      if (a === 0) continue;
+      blendPx(buf, (ty * cw + tx) * 4, rgba[so], rgba[so + 1], rgba[so + 2], a);
+    }
+  }
 }
 
 /** RGB 乘以颜色（对应 _tint_rgba）。 */
@@ -572,19 +605,76 @@ export function padAndScale(buf, cw, ch, scale, pad, transparent, bgtex) {
 // 6. 中心配置图标 / 电力激光 / 桥
 // -----------------------------------------------------------------------------
 
-/** 方块中心配置图标（对应 _draw_center_config）。 */
-export function drawCenterConfig(buf, cw, ch, tile, cx, cy, sprites) {
-  const cfg = tile.config;
+/** 绘制方块 sprite 层（多层/描边/旋转），供 underlay/overlay 复用。 */
+function drawBlockSpriteLayers(buf, cw, ch, t, e, sprites, layers) {
+  const cx = e.px + Math.floor((e.size * TILE) / 2);
+  const cy = e.py + Math.floor((e.size * TILE) / 2);
+  const names = layers ? LAYERS[t.block] || MOD_LAYERS[t.block] || [t.block] : [t.block];
+  for (let li = 0; li < names.length; li++) {
+    const lname = names[li];
+    const optional = lname !== t.block;
+    const sp = getSprite(sprites, lname, optional);
+    if (!sp) continue;
+    const sw = sp.w;
+    const sh = sp.h;
+    let rgba = sp.rgba;
+    // outlineIcon 方块的顶层图标贴图先加描边（vanilla ∪ 模组）
+    const outline = OUTLINE_ICON[t.block] || MOD_OUTLINE.get(t.block);
+    if (li === names.length - 1 && outline) {
+      const [ocol, orad] = outline;
+      rgba = makeOutline(rgba, sw, sh, ocol, orad);
+    }
+    const [rw, rh, rrgba] = rotateSprite(rgba, sw, sh, t.rot);
+    blend(buf, cw, ch, cx - Math.floor(rw / 2), cy - Math.floor(rh / 2), rrgba, rw, rh);
+  }
+}
+
+/** 配置底层（在 sprite 层之前）。kind="item"：null → cross-full；有内容 → 整格内容色填充。 */
+function drawConfigUnderlay(buf, cw, ch, t, e, sprites) {
+  const cfg = t.config;
+  const px = e.size * TILE;
   if (cfg === null) {
-    const sp = getSprite(sprites, "cross", true);
+    const sp = getSprite(sprites, "cross-full", true) || getSprite(sprites, "cross", true);
     if (!sp) return;
-    blend(buf, cw, ch, ifloor(cx - sp.w / 2), ifloor(cy - sp.h / 2), sp.rgba, sp.w, sp.h);
-  } else if (tile.config_type === "content") {
-    const sp = getSprite(sprites, "center", true);
+    blend(buf, cw, ch, e.px + Math.floor((px - sp.w) / 2), e.py + Math.floor((px - sp.h) / 2), sp.rgba, sp.w, sp.h);
+  } else {
+    const color = CONTENT_COLORS[cfg] || [255, 255, 255];
+    fillRect(buf, cw, ch, e.px, e.py, px, px, [color[0], color[1], color[2], 255]);
+  }
+}
+
+/** 配置覆盖层（在 sprite 层之后）。
+ *  centerTint：有内容 → `<block>-center` 乘内容色。
+ *  liquidSource：source-bottom → (null?cross:fluid 着色铺满) → 重画该方块 sprite（最上层）。 */
+function drawConfigOverlay(buf, cw, ch, t, e, sprites, layers) {
+  const kind = CONFIG_OVERLAY[t.block];
+  const px = e.size * TILE;
+  const cfg = t.config;
+  if (kind === "centerTint") {
+    if (cfg === null) return;
+    const sp = getSprite(sprites, t.block + "-center", true);
     if (!sp) return;
     const color = CONTENT_COLORS[cfg] || [255, 255, 255];
-    const tinted = tintRgba(sp.rgba, color);
-    blend(buf, cw, ch, ifloor(cx - sp.w / 2), ifloor(cy - sp.h / 2), tinted, sp.w, sp.h);
+    blend(buf, cw, ch, e.px + Math.floor((px - sp.w) / 2), e.py + Math.floor((px - sp.h) / 2), tintRgba(sp.rgba, color), sp.w, sp.h);
+  } else if (kind === "liquidSource") {
+    const bottom = getSprite(sprites, "source-bottom", true);
+    if (bottom) {
+      blend(buf, cw, ch, e.px + Math.floor((px - bottom.w) / 2), e.py + Math.floor((px - bottom.h) / 2), bottom.rgba, bottom.w, bottom.h);
+    }
+    if (cfg === null) {
+      const cross = getSprite(sprites, "cross", true);
+      if (cross) {
+        blend(buf, cw, ch, e.px + Math.floor((px - cross.w) / 2), e.py + Math.floor((px - cross.h) / 2), cross.rgba, cross.w, cross.h);
+      }
+    } else {
+      const fluid = getSprite(sprites, "fluid", true);
+      if (fluid) {
+        const color = CONTENT_COLORS[cfg] || [255, 255, 255];
+        tileBlit(buf, cw, ch, fluid, e.px, e.py, px, px, tintRgba(fluid.rgba, color));
+      }
+    }
+    // 液体源：sprite 重画到最上层
+    drawBlockSpriteLayers(buf, cw, ch, t, e, sprites, layers);
   }
 }
 
@@ -799,33 +889,15 @@ export function renderSchematic(schem, sprites, opts = {}) {
 
   if (grid) drawGrid(buf, cw, ch);
 
-  // ---- 第一遍：方块图标（多层，按中心对齐） + 中心配置图标 ----
+  // ---- 第一遍：配置底层 → 方块图标（多层，按中心对齐） → 配置覆盖层 ----
   for (const e of layout.entries) {
     const t = e.tile;
-    const cx = e.px + Math.floor((e.size * TILE) / 2);
-    const cy = e.py + Math.floor((e.size * TILE) / 2);
-
-    const names = layers ? LAYERS[t.block] || MOD_LAYERS[t.block] || [t.block] : [t.block];
-    for (let li = 0; li < names.length; li++) {
-      const lname = names[li];
-      const optional = lname !== t.block;
-      const sp = getSprite(sprites, lname, optional);
-      if (!sp) continue;
-      const sw = sp.w;
-      const sh = sp.h;
-      let rgba = sp.rgba;
-      // outlineIcon 方块的顶层图标贴图先加描边（vanilla ∪ 模组）
-      const outline = OUTLINE_ICON[t.block] || MOD_OUTLINE.get(t.block);
-      if (li === names.length - 1 && outline) {
-        const [ocol, orad] = outline;
-        rgba = makeOutline(rgba, sw, sh, ocol, orad);
-      }
-      const [rw, rh, rrgba] = rotateSprite(rgba, sw, sh, t.rot);
-      blend(buf, cw, ch, cx - Math.floor(rw / 2), cy - Math.floor(rh / 2), rrgba, rw, rh);
+    if (configIcons && CONFIG_UNDERLAY[t.block]) {
+      drawConfigUnderlay(buf, cw, ch, t, e, sprites);
     }
-
-    if (configIcons && CENTER_CONFIG_BLOCKS.has(t.block)) {
-      drawCenterConfig(buf, cw, ch, t, cx, cy, sprites);
+    drawBlockSpriteLayers(buf, cw, ch, t, e, sprites, layers);
+    if (configIcons && CONFIG_OVERLAY[t.block]) {
+      drawConfigOverlay(buf, cw, ch, t, e, sprites, layers);
     }
   }
 

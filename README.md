@@ -149,6 +149,16 @@ UI emoji → 去掉。
   （把每个方块的 requirements 直接累加，无倍率）；`ITEM_CN` 为官方中文名。
   渲染完成后，`js/requirements.js` 的 `computeRequirements()` / `requirementsList()`
   累加并在页面显示「耗材」面板（物品图标 + 中文名 + ×数量，按数量降序）。
+- **配置影响贴图（v159.7 源码行为）**：`js/data.js` 用 `CONFIG_UNDERLAY` / `CONFIG_OVERLAY`
+  描述配置对贴图的影响，`render.js` 在 sprite 层前后绘制：
+  - `sorter` / `inverted-sorter` / `item-source`（underlay）：配置为空 → 画 `cross-full`（原色）；
+    有内容 → 整格 `TILE×TILE` 填充内容色（`CONTENT_COLORS`）。
+  - `unloader` / `duct-unloader`（overlay）：有内容 → 画 `<block>-center`（`unloader-center` /
+    `duct-unloader-center`）并乘内容色；为空不画。
+  - `liquid-source`（overlay）：`source-bottom` → 空则 `cross`、有液体则用 `fluid.png`
+    铺满整格并以液体色着色 → **重画一次该方块 sprite**（最上层）。
+  - `CONTENT_COLORS` 按官方 `Items.java` / `Liquids.java`（v159.7）补全物品与液体颜色；
+    `opts.config_icons=false` 时上述配置贴图全部跳过。
 
 ## 六、模组支持
 
@@ -213,6 +223,8 @@ UI emoji → 去掉。
   - 文本型（解码后全为 Base64/空白且以 `bXNja` 开头）→ 直接填入原文（trim）；
   - 二进制 `.msch` → 用 `bytesToBase64()` 转成 Base64 文本填入。
 - 状态栏显示「已读取文件：<文件名>（N 字节）」；随后自动解析渲染。
+- 输入区下方会出现**来源标签** `#input-source`：文件加载时显示 `文件：<名>（N 字节）`；
+  手动编辑/粘贴 textarea、点击历史条目或清空输入时自动隐藏。
 - 由于输入框此时就是可再次解析的字符串，**「解析并渲染」可重复点击**，且文件加载同样会写入
   历史记录（不再出现「选文件后无历史」的问题）。
 

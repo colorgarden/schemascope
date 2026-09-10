@@ -20,6 +20,8 @@ import {
   bridgeWidthOf,
   bridgeRangeOf,
   drawBeam,
+  fillRect,
+  tileBlit,
   renderSchematic,
   drawGrid,
   makePlaceholder,
@@ -33,7 +35,7 @@ import {
   nodeLaserOpts,
 } from "../js/render.js";
 import { blockDisplayName, modNameCandidates } from "../js/names.js";
-import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN } from "../js/data.js";
+import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN, CONTENT_COLORS, CONFIG_UNDERLAY, CONFIG_OVERLAY } from "../js/data.js";
 import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, ICON_FONT_LO } from "../js/icons.js";
 import { ICON_BY_CODE, ICON_LOCAL_CODES } from "../js/icons_data.js";
 import { simpleHash, createPrefetchManager } from "../js/prefetch.js";
@@ -1044,6 +1046,113 @@ async function testFileInput() {
 }
 
 // -----------------------------------------------------------------------------
+// 8b. 配置影响贴图（underlay/overlay）渲染
+// -----------------------------------------------------------------------------
+function testConfigRender() {
+  console.log("== 配置贴图渲染测试 ==");
+
+  // fillRect
+  const fb = new Uint8ClampedArray(4 * 4 * 4);
+  fillRect(fb, 4, 4, 1, 1, 2, 2, [10, 20, 30, 255]);
+  check(
+    "fillRect：填充 2×2、其余透明",
+    fb[(1 * 4 + 1) * 4] === 10 && fb[(1 * 4 + 1) * 4 + 2] === 30 && fb[(2 * 4 + 2) * 4 + 3] === 255 && fb[3] === 0,
+    `p11=${fb[(1 * 4 + 1) * 4]},${fb[(1 * 4 + 1) * 4 + 2]} p00a=${fb[3]}`
+  );
+
+  // tileBlit
+  const region = {
+    w: 2,
+    h: 2,
+    rgba: new Uint8ClampedArray([
+      255, 0, 0, 255, 0, 255, 0, 255,
+      0, 0, 255, 255, 255, 255, 0, 255,
+    ]),
+  };
+  const tb = new Uint8ClampedArray(4 * 4 * 4);
+  tileBlit(tb, 4, 4, region, 0, 0, 4, 4, region.rgba);
+  const at = (x, y) => tb[(y * 4 + x) * 4];
+  check(
+    "tileBlit：按 region 平铺",
+    at(0, 0) === 255 && at(1, 0) === 0 && at(2, 0) === 255 && at(0, 1) === 0 && at(1, 1) === 255,
+    `(${at(0, 0)},${at(1, 0)}) (${at(0, 1)},${at(1, 1)})`
+  );
+
+  const W = TILE;
+  const mk = (r, g, b, a) => {
+    const rgba = new Uint8ClampedArray(W * W * 4);
+    for (let i = 0; i < W * W; i++) {
+      rgba[i * 4] = r;
+      rgba[i * 4 + 1] = g;
+      rgba[i * 4 + 2] = b;
+      rgba[i * 4 + 3] = a;
+    }
+    return { w: W, h: W, size: 1, rgba, placeholder: false };
+  };
+  const clear = () => mk(0, 0, 0, 0);
+  const sprites = {
+    sorter: clear(),
+    "item-source": clear(),
+    unloader: clear(),
+    "unloader-center": mk(255, 255, 255, 255),
+    "liquid-source": clear(),
+    "source-bottom": clear(),
+    "cross-full": mk(10, 200, 10, 255),
+    cross: mk(200, 10, 10, 255),
+    fluid: mk(255, 255, 255, 255),
+  };
+  const schem = {
+    width: 4,
+    height: 1,
+    tiles: [
+      { block: "sorter", x: 0, y: 0, rot: 0, config_type: "content", config: "copper" },
+      { block: "item-source", x: 1, y: 0, rot: 0, config_type: "null", config: null },
+      { block: "unloader", x: 2, y: 0, rot: 0, config_type: "content", config: "titanium" },
+      { block: "liquid-source", x: 3, y: 0, rot: 0, config_type: "content", config: "water" },
+    ],
+  };
+  const res = renderSchematic(schem, sprites, { scale: 1, pad: 0, transparent: true, grid: false });
+  const cw = 4 * TILE;
+  const px = (x) => (16 * cw + x * TILE + 16) * 4;
+
+  const copper = CONTENT_COLORS.copper;
+  const titanium = CONTENT_COLORS.titanium;
+  const water = CONTENT_COLORS.water;
+  check(
+    "sorter(item)：整格填充内容色（copper）",
+    res.rgba[px(0)] === copper[0] && res.rgba[px(0) + 1] === copper[1] && res.rgba[px(0) + 2] === copper[2],
+    [res.rgba[px(0)], res.rgba[px(0) + 1], res.rgba[px(0) + 2]].join(",")
+  );
+  check(
+    "item-source(null)：出现 cross-full",
+    res.rgba[px(1)] === 10 && res.rgba[px(1) + 1] === 200 && res.rgba[px(1) + 2] === 10,
+    [res.rgba[px(1)], res.rgba[px(1) + 1], res.rgba[px(1) + 2]].join(",")
+  );
+  check(
+    "unloader(item)：center 乘内容色（titanium）",
+    res.rgba[px(2)] === titanium[0] && res.rgba[px(2) + 1] === titanium[1] && res.rgba[px(2) + 2] === titanium[2],
+    [res.rgba[px(2)], res.rgba[px(2) + 1], res.rgba[px(2) + 2]].join(",")
+  );
+  check(
+    "liquid-source(water)：fluid 着色铺满（water）",
+    res.rgba[px(3)] === water[0] && res.rgba[px(3) + 1] === water[1] && res.rgba[px(3) + 2] === water[2],
+    [res.rgba[px(3)], res.rgba[px(3) + 1], res.rgba[px(3) + 2]].join(",")
+  );
+
+  // config_icons=false 时两者都跳过
+  const res2 = renderSchematic(schem, sprites, { scale: 1, pad: 0, transparent: true, grid: false, config_icons: false });
+  check("config_icons=false：不画配置贴图", res2.rgba[px(0) + 3] === 0 && res2.rgba[px(1) + 3] === 0);
+
+  check("CONFIG_UNDERLAY 映射", CONFIG_UNDERLAY.sorter === "item" && CONFIG_UNDERLAY["item-source"] === "item");
+  check(
+    "CONFIG_OVERLAY 映射",
+    CONFIG_OVERLAY.unloader === "centerTint" &&
+      CONFIG_OVERLAY["duct-unloader"] === "centerTint" &&
+      CONFIG_OVERLAY["liquid-source"] === "liquidSource"
+  );
+}
+
+// -----------------------------------------------------------------------------
 // 9. 镜像源切换 / 超时 / 缓存（注入 mock fetch 与 mock Cache Storage）
 // -----------------------------------------------------------------------------
 async function testNet() {
@@ -1287,6 +1396,7 @@ async function main() {
   testCnAndFrames();
   testHistory();
   await testFileInput();
+  testConfigRender();
   await testNet();
 
   console.log("");

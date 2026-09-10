@@ -35,6 +35,7 @@ const $ = (id) => document.getElementById(id);
 const els = {
   input: $("input-text"),
   file: $("file-input"),
+  inputSource: $("input-source"),
   parseBtn: $("parse-btn"),
   scale: $("scale"),
   bgMode: $("bg-mode"),
@@ -1057,11 +1058,24 @@ function recordHistory(schem, input) {
   persistHistory(addHistory(history, entry));
 }
 
+/** 显示/隐藏输入来源标签（文件加载显示；手动编辑/历史载入/清空隐藏）。 */
+function setInputSource(text) {
+  if (!els.inputSource) return;
+  if (text) {
+    els.inputSource.textContent = text;
+    els.inputSource.hidden = false;
+  } else {
+    els.inputSource.hidden = true;
+    els.inputSource.textContent = "";
+  }
+}
+
 /** 载入历史条目：填入输入框并触发解析渲染（成功后自动置顶刷新时间）。 */
 function loadHistoryEntry(hash) {
   const e = history.find((x) => x.hash === hash);
   if (!e) return;
   els.input.value = e.input || "";
+  setInputSource("");
   run(e.input);
 }
 
@@ -1301,6 +1315,7 @@ els.parseBtn.addEventListener("click", () => {
 // 输入即解析：停止输入约 350ms 后自动解析并在后台预加载贴图（不自动渲染）
 els.input.addEventListener("input", () => {
   clearError();
+  setInputSource("");
   scheduleAutoParse(els.input.value);
 });
 
@@ -1314,6 +1329,7 @@ els.file.addEventListener("change", async () => {
     const text = isTextBlueprint(buf) ? new TextDecoder("utf-8").decode(buf).trim() : bytesToBase64(buf);
     els.input.value = text;
     setStatus(`已读取文件：${file.name}（${buf.length} 字节）`);
+    setInputSource(`文件：${file.name}（${buf.length} 字节）`);
     scheduleAutoParse(text); // 后台预加载
     await run(text);
   } catch (e) {
@@ -1344,6 +1360,7 @@ els.drop.addEventListener("drop", async (e) => {
     const text = isTextBlueprint(buf) ? new TextDecoder("utf-8").decode(buf).trim() : bytesToBase64(buf);
     els.input.value = text;
     setStatus(`已读取文件：${file.name}（${buf.length} 字节）`);
+    setInputSource(`文件：${file.name}（${buf.length} 字节）`);
     scheduleAutoParse(text); // 后台预加载
     await run(text);
   } catch (err) {

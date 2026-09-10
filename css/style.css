@@ -144,6 +144,22 @@ h1 .sub {
   text-align: center;
 }
 
+/* 输入来源标签（文件加载时显示，手动编辑/粘贴/历史载入时隐藏） */
+.input-source {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px 8px;
+}
+
+.input-source[hidden] {
+  display: none;
+}
+
 .row {
   display: flex;
   flex-wrap: wrap;

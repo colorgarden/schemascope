@@ -151,6 +151,10 @@ export const AUX_PATHS = {
   "battery-top": "sprites/blocks/power/battery-top.png",
   "mass-driver-base": "sprites/blocks/distribution/mass-driver-base.png",
   "liquid-tank-bottom": "sprites/blocks/liquid/liquid-tank-bottom.png",
+  // 配置影响贴图（v159.7）
+  "unloader-center": "sprites/blocks/storage/unloader-center.png",
+  "duct-unloader-center": "sprites/blocks/ducts/duct-unloader-center.png",
+  fluid: "sprites/blocks/liquid/fluid.png",
   // 电力节点激光（effects 贴图）
   laser: "sprites/effects/laser.png",
   "laser-end": "sprites/effects/laser-end.png",
@@ -163,40 +167,60 @@ export const AUX_PATHS = {
   "schematic-background": ["core/assets/", "sprites/schematic-background.png"],
 };
 
-// 使用 drawPlanConfigCenter(plan, config, "center", cross=true) 的方块。
-// 这些方块在预览时会于中心叠加：config 为空→cross，config 为内容→center(着色)。
-export const CENTER_CONFIG_BLOCKS = new Set([
-  "sorter",
-  "inverted-sorter",
-  "liquid-source",
-  "item-source",
-  "unloader",
-]);
+// 配置影响贴图：sprite 层「之前」绘制的底层（v159.7 源码）
+//   sorter/inverted-sorter/item-source：null → cross-full；有内容 → 整格填充内容色
+export const CONFIG_UNDERLAY = {
+  sorter: "item",
+  "inverted-sorter": "item",
+  "item-source": "item",
+};
 
-// 内容名 → 颜色（物品/液体）。未知内容回退白色。
-// 水：#596ab8（Liquids.java 已确认）。
+// 配置影响贴图：sprite 层「之后」绘制的覆盖层
+//   unloader/duct-unloader：centerTint（有内容 → <block>-center 乘内容色）
+//   liquid-source：source-bottom → (null?cross:fluid 着色铺满) → 重画 sprite
+export const CONFIG_OVERLAY = {
+  unloader: "centerTint",
+  "duct-unloader": "centerTint",
+  "liquid-source": "liquidSource",
+};
+
+// 内容名 → 颜色（物品/液体，取自 Mindustry v159.7 Items.java / Liquids.java）。未知内容回退白色。
 export const CONTENT_COLORS = {
-  water: [0x59, 0x6a, 0xb8],
-  slag: [0xff, 0xa1, 0x66],
-  oil: [0x31, 0x31, 0x31],
-  cryofluid: [0x6e, 0xc1, 0xff],
+  // 物品
   copper: [0xd9, 0x9d, 0x73],
   lead: [0x8c, 0x7f, 0xa9],
-  metaglass: [0xeb, 0xee, 0xf4],
+  metaglass: [0xeb, 0xee, 0xf5],
   graphite: [0xb2, 0xc6, 0xd2],
-  silicon: [0x53, 0x56, 0x5c],
-  titanium: [0x8d, 0xa1, 0xb7],
+  sand: [0xf7, 0xcb, 0xa4],
+  coal: [0x27, 0x27, 0x27],
+  titanium: [0x8d, 0xa1, 0xe3],
   thorium: [0xf9, 0xa3, 0xc7],
-  plastanium: [0x58, 0xd3, 0xa3],
+  scrap: [0x77, 0x77, 0x77],
+  silicon: [0x53, 0x56, 0x5c],
+  plastanium: [0xcb, 0xd9, 0x7f],
   "phase-fabric": [0xf4, 0xba, 0x6e],
   "surge-alloy": [0xf3, 0xe9, 0x79],
   "spore-pod": [0x74, 0x57, 0xce],
   "blast-compound": [0xff, 0x79, 0x5e],
   pyratite: [0xff, 0xaa, 0x5f],
-  beryllium: [0x8c, 0xa1, 0xa7],
-  tungsten: [0x76, 0x8a, 0x94],
-  oxide: [0xe0, 0xff, 0xb3],
-  carbide: [0x6f, 0x7c, 0x8a],
+  beryllium: [0x3a, 0x8f, 0x64],
+  tungsten: [0x76, 0x8a, 0x9a],
+  oxide: [0xe4, 0xff, 0xd6],
+  carbide: [0x89, 0x76, 0x9a],
+  "fissile-matter": [0x5e, 0x98, 0x8d],
+  "dormant-cyst": [0xdf, 0x82, 0x4d],
+  // 液体
+  water: [0x59, 0x6a, 0xb8],
+  slag: [0xff, 0xa1, 0x66],
+  oil: [0x31, 0x31, 0x31],
+  cryofluid: [0x6e, 0xcd, 0xec],
+  neoplasm: [0xc3, 0x3e, 0x2b],
+  arkycite: [0x84, 0xa9, 0x4b],
+  gallium: [0x9a, 0x9d, 0xbf],
+  ozone: [0xfc, 0x81, 0xdd],
+  hydrogen: [0x9e, 0xab, 0xf7],
+  nitrogen: [0xef, 0xe3, 0xff],
+  cyanogen: [0x89, 0xe8, 0xb6],
 };
 
 // 视为电力方块、可作为电力节点连线目标的方块
