@@ -23,7 +23,8 @@ web/
   js/icons.js           PUA 内容图标解析 + richText 富文本
   js/icons_data.js      PUA 码点表（由 icons.properties 生成）
   js/prefetch.js        输入哈希 + 预加载管理器（可单测）
-  js/cache.js           Cache Storage 持久化缓存（SWR + TTL）
+  js/cache.js           Cache Storage 持久化缓存（v2 + 规范化键 + SWR/TTL）
+  js/sources.js         Mindustry 镜像源（超时 + 自动切换 + last-good）
   js/zip.js             纯 JS zip 读取器（STORED/DEFLATE，可单测）
   js/mod.js             模组 zip 解析（方块/贴图/bundle，可单测）
   js/requirements.js    蓝图总耗材计算（可单测）
@@ -80,8 +81,8 @@ https://cdn.jsdelivr.net/gh/Anuken/Mindustry@master/ + 相对路径
 
 ## 三、更新贴图源的方法
 
-- **指向别的 CDN / 镜像**：编辑 `js/data.js` 中的 `CDN_PREFIX`，改成你的镜像地址
-  （格式需为 `前缀 + core/assets-raw/ + sprites/...png` 可拼接）。
+- **指向别的 CDN / 镜像**：编辑 `js/sources.js` 的 `SOURCES`（按优先级排列），
+  或删除不需要的源；运行时会自动切换并记住最近可用源。
 - **改单个贴图路径**：编辑 `sprite_index.json`（或 `js/data.js` 的 `AUX_PATHS`）。
   索引结构为：
   ```json
@@ -149,12 +150,16 @@ UI emoji → 去掉。
   - `mod.json` 的 `name` 为内部模组名，方块内部名 = `<name>-<文件名去.json>`。
   - 宽松 JSON：支持 `//`、`/* */` 注释、尾随逗号、缺失逗号（部分模组 JSON 不规范）。
   - `requirements` 同时支持 `"item/amount"` 与 `{item,amount}`。
-  - 贴图按文件名（去扩展名）索引，`sprites-override/**` 覆盖 `sprites/**`。
   - `bundles/bundle_zh_CN.properties` / `bundle.properties` 提供方块与物品中文名。
+- **贴图懒解压（大模组关键优化）**：解析时只登记 zip 中央目录条目（`sprites/**` 与
+  `sprites-override/**` 的 basename → 条目），**不解压字节**；首次真正用到某张贴图时才
+  解压该条目并缓存为 Blob（会话内）。`mod.sprites.size` 为**条目数**，
+  `mod.spritesOverride.size` 为 override 条目数；UI 显示「贴图 N（按需加载）」。
+  `sprites-override` 仍覆盖 `sprites`。
 - **渲染集成**：贴图查找顺序为 内存 → 模组 `sprites-override` → 本地 `assets/sprites` →
-  CDN（原逻辑）→ 模组 `sprites` → 占位；模组方块缺失贴图但 JSON 有 `size` 时按该尺寸占位；
-  模组方块多层启发式（`<base>-base` 在前、`<base>-top` 在后）仅在 vanilla `LAYERS`
-  未定义该块时生效。
+  镜像源（超时/自动切换）→ 模组 `sprites` → 占位；模组方块缺失贴图但 JSON 有 `size`
+  时按该尺寸占位；模组方块多层启发式（`<base>-base` 在前、`<base>-top` 在后）仅在
+  vanilla `LAYERS` 未定义该块时生效。
 - **耗材集成**：总耗材表 = vanilla `BLOCK_REQUIREMENTS` + 所有模组方块（内部名与 base 都注册）；
   物品名优先取模组 bundle `item.<内部名>.name`，物品图标优先模组贴图（`item-<ref>` / `<ref>`）。
 - **限制**：JSON / 混合模组可完整支持建筑与耗材；**纯 dex 模组**（无 JSON 方块定义）
@@ -174,14 +179,26 @@ UI emoji → 去掉。
   下次打开自动回填并触发预加载（**不自动渲染**）。
 
 ### 持久化缓存（Cache Storage API）
-- `js/cache.js` 用 `caches.open("msch-cache-v1")` 缓存贴图与 `sprite_index.json`：
+- `js/cache.js` 用 `caches.open("msch-cache-v2")` 缓存贴图与 `sprite_index.json`：
   - **命中** → 立即用缓存 Response（blob→`createImageBitmap`），页面刷新后无需重新联网；
   - **stale-while-revalidate**：缓存条目超过 **TTL 7 天**时，先返回缓存、后台 fetch 刷新；
-  - **未命中** → fetch → 成功后 `cache.put`。
+  - **未命中** → 走超时/镜像链路 fetch → **成功才** `cache.put`；失败/超时绝不写缓存。
+- **缓存键规范化**：Mindustry 素材统一记为 `location.origin + "/__sprites__/" + relPath`
+  （与镜像源无关），换镜像后缓存依然命中，避免重复下载。
 - 时间戳记录在 `localStorage.msch-cache-meta`。
 - 不可用时（非 https、无 `caches` API、隐私模式、`localStorage` 被禁）自动回退到普通
   `fetch` + 会话内内存缓存，不报错。
-- 状态栏会显示「（缓存命中 X 张）」；页脚「清除缓存」可删除 `msch-cache-v1` 与时间戳。
+- 状态栏会显示「（缓存命中 X 张）」；页脚「清除缓存」会删除所有 `msch-cache-*`
+  （含旧版本）与时间戳。
+
+### 镜像源自动切换与超时（`js/sources.js`）
+- 源优先级：jsDelivr(cdn/fastly/gcore/testingcf) → githack → raw.githubusercontent。
+- 每次请求用 `AbortController` 设 **8 秒**超时；超时/失败自动切下一个源；成功的源
+  写入 `localStorage.msch-source`，后续请求优先使用。
+- 无 last-good 记录时先用小文件（`core/assets-raw/sprites/effects/error.png`，3 秒超时）
+  **探测**一次，避免前 16 个并发全部各等 8 秒。
+- 发生切换时状态栏提示「下载超时，已切换镜像：<host>」。
+- 耗材面板中未命中模组的原版物品图标也使用当前可用源。
 
 ## 八、本地预览
 
@@ -198,7 +215,7 @@ python3 -m http.server 8000
 
 ```bash
 cd web
-node --check js/data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/app.js
+node --check js/data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/app.js
 node test/parse_test.mjs
 ```
 

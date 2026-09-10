@@ -500,6 +500,16 @@ async function testMods() {
     check("67科技 name=无限", m.name === "无限", `name=${m.name}`);
     check("67科技 blocks=31", modBlockCount(m) === 31, `blocks=${modBlockCount(m)}`);
     check("67科技 sprites=122", m.sprites.size === 122, `sprites=${m.sprites.size}`);
+    // 懒解压：解析阶段不读贴图字节，首次 get 才解压且缓存
+    check("67科技 懒加载：解析后未解压贴图", m.spriteStats.reads === 0, `reads=${m.spriteStats.reads}`);
+    const k67 = [...m.sprites.keys()][0];
+    const b67a = await m.sprites.get(k67);
+    const b67b = await m.sprites.get(k67);
+    check(
+      "67科技 懒加载：按需解压一次并缓存",
+      m.spriteStats.reads === 1 && !!b67a && b67a === b67b,
+      `reads=${m.spriteStats.reads}`
+    );
     const pump = m.blocks.get("无限-便携式抽水机");
     check("67科技 便携式抽水机存在", !!pump);
     if (pump) {
@@ -517,6 +527,17 @@ async function testMods() {
     check("饱和火力 name=饱和火力", m.name === "饱和火力", `name=${m.name}`);
     check("饱和火力 blocks=303", modBlockCount(m) === 303, `blocks=${modBlockCount(m)}`);
     check("饱和火力 sprites≥2000（含 override）", m.sprites.size >= 2000, `sprites=${m.sprites.size}`);
+    check("饱和火力 spritesOverride 条目=12", m.spritesOverride.size === 12, `override=${m.spritesOverride.size}`);
+    // 懒解压：解析阶段不读贴图字节
+    check("饱和火力 懒加载：解析后未解压贴图", m.spriteStats.reads === 0, `reads=${m.spriteStats.reads}`);
+    const kbh = [...m.sprites.keys()][0];
+    const bha = await m.sprites.get(kbh);
+    const bhb = await m.sprites.get(kbh);
+    check(
+      "饱和火力 懒加载：按需解压一次并缓存",
+      m.spriteStats.reads === 1 && !!bha && bha === bhb,
+      `reads=${m.spriteStats.reads}`
+    );
     check(
       "饱和火力 bundle 有 block.饱和火力-前沿实验室.name",
       m.bundle.get("block.饱和火力-前沿实验室.name") === "前沿实验室",
@@ -552,6 +573,179 @@ function modBlockCount(m) {
 }
 
 // -----------------------------------------------------------------------------
+// 7. 镜像源切换 / 超时 / 缓存（注入 mock fetch 与 mock Cache Storage）
+// -----------------------------------------------------------------------------
+async function testNet() {
+  console.log("== 镜像源 / 缓存测试 ==");
+
+  function setGlobal(name, value) {
+    const d = Object.getOwnPropertyDescriptor(globalThis, name);
+    Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
+    return d;
+  }
+  function restoreGlobal(name, d) {
+    try {
+      if (d) Object.defineProperty(globalThis, name, d);
+      else delete globalThis[name];
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  const lsStore = {};
+  const dLS = setGlobal("localStorage", {
+    getItem: (k) => (k in lsStore ? lsStore[k] : null),
+    setItem: (k, v) => {
+      lsStore[k] = String(v);
+    },
+    removeItem: (k) => {
+      delete lsStore[k];
+    },
+  });
+  const dLoc = setGlobal("location", { origin: "https://example.test" });
+
+  const cacheStore = new Map();
+  const cacheMock = {
+    async match(k) {
+      const key = typeof k === "string" ? k : k.url;
+      return cacheStore.get(key) || undefined;
+    },
+    async put(k, resp) {
+      const key = typeof k === "string" ? k : k.url;
+      cacheStore.set(key, resp);
+    },
+    async keys() {
+      return [...cacheStore.keys()].map((u) => new Request(u));
+    },
+    async delete(k) {
+      const key = typeof k === "string" ? k : k.url;
+      return cacheStore.delete(key);
+    },
+  };
+  const dCaches = setGlobal("caches", {
+    async open() {
+      return cacheMock;
+    },
+    async delete() {
+      return true;
+    },
+    async keys() {
+      return [];
+    },
+  });
+
+  try {
+    const { fetchMindustry, resetProbe, SOURCES } = await import("../js/sources.js");
+    const { fetchMindustryCached, spriteCacheKey, resetCacheInfo } = await import("../js/cache.js");
+    const A = SOURCES[0];
+    const B = SOURCES[1];
+    const C = SOURCES[2];
+    const D = SOURCES[3];
+
+    // ---- 源切换顺序 + last-good 记忆 ----
+    resetProbe();
+    const seen = [];
+    const switchFetch = (url) => {
+      seen.push(url);
+      if (url.startsWith(A)) return Promise.reject(new Error("boom"));
+      return Promise.resolve(new Response("ok", { status: 200 }));
+    };
+    let switched = null;
+    const r1 = await fetchMindustry("x.png", {
+      sources: [A, B, C],
+      fetchImpl: switchFetch,
+      timeoutMs: 100,
+      probe: false,
+      onSwitch: (f, t) => {
+        switched = [f, t];
+      },
+    });
+    check(
+      "源切换：首个失败自动切到下一个成功",
+      r1.ok && seen[0].startsWith(A) && seen[1].startsWith(B) && !!switched && switched[1] === B,
+      JSON.stringify(seen.map((u) => u.slice(0, 24)))
+    );
+    check("last-good 记忆 = 第二个源", localStorage.getItem("msch-source") === B, localStorage.getItem("msch-source"));
+
+    seen.length = 0;
+    switched = null;
+    const r2 = await fetchMindustry("y.png", {
+      sources: [A, B, C],
+      fetchImpl: switchFetch,
+      timeoutMs: 100,
+      probe: false,
+      onSwitch: (f, t) => {
+        switched = [f, t];
+      },
+    });
+    check(
+      "后续请求优先使用最近可用源",
+      r2.ok && seen.length === 1 && seen[0].startsWith(B) && !switched,
+      JSON.stringify(seen.map((u) => u.slice(0, 24)))
+    );
+
+    // ---- 超时（abort）→ 切到下一个源 ----
+    const timeoutFetch = (url, opts) => {
+      if (url.startsWith(A)) {
+        return new Promise((_, rej) => {
+          opts.signal.addEventListener("abort", () => rej(new Error("aborted")));
+        });
+      }
+      return Promise.resolve(new Response("ok", { status: 200 }));
+    };
+    localStorage.removeItem("msch-source");
+    resetProbe();
+    const r3 = await fetchMindustry("z.png", {
+      sources: [A, D],
+      fetchImpl: timeoutFetch,
+      timeoutMs: 30,
+      probe: false,
+    });
+    check("超时(abort)后切换到下一个源成功", r3.ok, "status=" + r3.status);
+    check("超时切换后 last-good = 下一个源", localStorage.getItem("msch-source") === D, localStorage.getItem("msch-source"));
+
+    // ---- 缓存命中 / 规范化键 / 失败不缓存 ----
+    cacheStore.clear();
+    resetCacheInfo();
+    localStorage.removeItem("msch-source");
+    let fetchCount = 0;
+    const okFetch = () => {
+      fetchCount++;
+      return Promise.resolve(new Response("PNGDATA", { status: 200 }));
+    };
+    const rel = "core/assets-raw/sprites/foo.png";
+    const c1 = await fetchMindustryCached(rel, { sources: [A], fetchImpl: okFetch, timeoutMs: 100, probe: false });
+    const c1t = await c1.text();
+    const afterFirst = fetchCount;
+    const c2 = await fetchMindustryCached(rel, { sources: [A], fetchImpl: okFetch, timeoutMs: 100, probe: false });
+    const c2t = await c2.text();
+    check("缓存键为规范化相对路径", cacheStore.has(spriteCacheKey(rel)), [...cacheStore.keys()].join(","));
+    check("首次请求成功并写入缓存", afterFirst === 1 && c1t === "PNGDATA", `fetchCount=${afterFirst}`);
+    check("缓存命中不再发起请求", fetchCount === 1 && c2t === "PNGDATA", `fetchCount=${fetchCount}`);
+
+    cacheStore.clear();
+    const failFetch = () => Promise.reject(new Error("net down"));
+    let threw = false;
+    try {
+      await fetchMindustryCached("core/assets-raw/sprites/bar.png", {
+        sources: [A],
+        fetchImpl: failFetch,
+        timeoutMs: 40,
+        probe: false,
+      });
+    } catch (e) {
+      threw = true;
+    }
+    check("所有源失败时抛错", threw);
+    check("失败不写入缓存", cacheStore.size === 0, `size=${cacheStore.size}`);
+  } finally {
+    restoreGlobal("localStorage", dLS);
+    restoreGlobal("location", dLoc);
+    restoreGlobal("caches", dCaches);
+  }
+}
+
+// -----------------------------------------------------------------------------
 // 入口
 // -----------------------------------------------------------------------------
 async function main() {
@@ -568,6 +762,7 @@ async function main() {
   await testPrefetch();
   testRequirements();
   await testMods();
+  await testNet();
 
   console.log("");
   console.log(`结果：PASS ${pass}，FAIL ${fail}`);

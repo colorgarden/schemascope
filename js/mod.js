@@ -10,7 +10,7 @@
 // 纯逻辑，可在 Node 下单测。
 // =============================================================================
 
-import { openZip, forEachLimit } from "./zip.js";
+import { openZip } from "./zip.js";
 
 /** 去掉 // 与 /* *\/ 注释（字符串感知），便于宽松解析模组 JSON。 */
 export function stripJsonComments(src) {
@@ -127,13 +127,59 @@ export function modSpriteCandidates(name, modNames) {
 }
 
 /**
+ * 构造懒解压贴图表：`size`/`has`/`keys` 基于中央目录条目（不解压），
+ * `get(name)` 首次调用时才解压该条目并缓存为 Blob。
+ * @param {object} zip openZip 结果
+ * @param {Map<string,object>} entriesMap basename → zip entry（优先表）
+ * @param {object} stats 解压计数 { reads }
+ * @param {Map<string,object>[]} fallbackMaps 次级表（合并 keys；get 时兜底）
+ */
+function makeLazySpriteMap(zip, entriesMap, stats, fallbackMaps = []) {
+  const keys = new Set(entriesMap.keys());
+  for (const m of fallbackMaps) for (const k of m.keys()) keys.add(k);
+  const cache = new Map();
+  return {
+    size: keys.size,
+    has: (name) => keys.has(name),
+    keys: () => keys.keys(),
+    async get(name) {
+      if (cache.has(name)) return cache.get(name);
+      let entry = entriesMap.get(name);
+      if (!entry) {
+        for (const m of fallbackMaps) {
+          if (m.has(name)) {
+            entry = m.get(name);
+            break;
+          }
+        }
+      }
+      if (!entry) {
+        cache.set(name, null);
+        return null;
+      }
+      stats.reads++;
+      const bytes = await zip.read(entry);
+      if (!bytes) {
+        cache.set(name, null);
+        return null;
+      }
+      const blob = new Blob([bytes]);
+      cache.set(name, blob);
+      return blob;
+    },
+  };
+}
+
+/**
  * 解析模组 zip。
  * @param {Uint8Array|ArrayBuffer|Blob} input
  * @param {string} fileName
- * @returns {Promise<{name,displayName,blocks:Map,sprites:Map,spritesOverride:Map,bundle:Map,fileName}>}
+ * @returns {Promise<{name,displayName,blocks:Map,sprites,spritesOverride,bundle:Map,fileName,spriteStats}>}
  *   blocks: Map(内部名/base → {base,size,name,requirements})
- *   sprites: Map(basename → Blob)，override 已覆盖普通贴图
- *   spritesOverride: Map(basename → Blob)
+ *   sprites: 懒解压贴图表（basename 索引，sprites-override 已覆盖）；
+ *            `size`/`has`/`keys` 为条目数，`get(name)` 按需解压返回 Blob
+ *   spritesOverride: 懒解压表（仅 sprites-override/**）
+ *   spriteStats: { reads } 实际解压次数（测试/调试用）
  *   bundle: Map(key → value)
  */
 export async function parseMod(input, fileName = "mod.zip") {
@@ -176,29 +222,19 @@ export async function parseMod(input, fileName = "mod.zip") {
     if (!blocks.has(base)) blocks.set(base, def);
   }
 
-  // ---- 贴图（按文件名索引；sprites-override 覆盖 sprites）----
-  const normalEntries = [];
-  const overrideEntries = [];
+  // ---- 贴图：只登记中央目录条目，字节按需解压 ----
+  const normalEntries = new Map();
+  const overrideEntries = new Map();
   for (const e of zip.entries) {
     if (e.isDir || !/\.png$/i.test(e.name)) continue;
-    if (e.name.startsWith("sprites-override/")) overrideEntries.push(e);
-    else if (e.name.startsWith("sprites/")) normalEntries.push(e);
+    const key = basename(e.name).replace(/\.png$/i, "");
+    if (e.name.startsWith("sprites-override/")) overrideEntries.set(key, e);
+    else if (e.name.startsWith("sprites/")) normalEntries.set(key, e);
   }
-  const sprites = new Map();
-  const spritesOverride = new Map();
-  await forEachLimit(normalEntries, 24, async (e) => {
-    const bytes = await zip.read(e);
-    if (bytes) sprites.set(basename(e.name).replace(/\.png$/i, ""), new Blob([bytes]));
-  });
-  await forEachLimit(overrideEntries, 24, async (e) => {
-    const bytes = await zip.read(e);
-    if (bytes) {
-      const key = basename(e.name).replace(/\.png$/i, "");
-      const blob = new Blob([bytes]);
-      spritesOverride.set(key, blob);
-      sprites.set(key, blob);
-    }
-  });
+  const spriteStats = { reads: 0 };
+  const spritesOverride = makeLazySpriteMap(zip, overrideEntries, spriteStats);
+  // 合并视图：override 覆盖 normal
+  const sprites = makeLazySpriteMap(zip, overrideEntries, spriteStats, [normalEntries]);
 
   // ---- bundle（zh_CN 最后读入以覆盖默认）----
   const bundle = new Map();
@@ -215,5 +251,5 @@ export async function parseMod(input, fileName = "mod.zip") {
     }
   }
 
-  return { name, displayName, blocks, sprites, spritesOverride, bundle, fileName };
+  return { name, displayName, blocks, sprites, spritesOverride, bundle, fileName, spriteStats };
 }

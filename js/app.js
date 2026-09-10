@@ -7,7 +7,6 @@ import {
   TILE,
   BLOCK_CN,
   CONTENT_CN,
-  CDN_PREFIX,
   LOCAL_SPRITE_DIR,
   AUX_PATHS,
   LAYERS,
@@ -19,7 +18,8 @@ import { parseSchematic, extractLogic, isProcessor } from "./parser.js";
 import { renderSchematic, getSprite, makePlaceholder, setModLayers } from "./render.js";
 import { setIconIndex, richText, plainTextWithIcons, itemIconSrc } from "./icons.js";
 import { simpleHash, createPrefetchManager } from "./prefetch.js";
-import { fetchCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js";
+import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js";
+import { preferredSource, sourceHost } from "./sources.js";
 import { requirementsList } from "./requirements.js";
 import { BLOCK_REQUIREMENTS } from "./requirements_data.js";
 import { parseMod, modSpriteCandidates } from "./mod.js";
@@ -82,8 +82,8 @@ let renderOpts = { scale: DEFAULT_SCALE, pad: DEFAULT_PAD, transparent: false, g
 // ---- 模组状态 ----
 let mods = []; // 已加载模组（parseMod 结果）
 let modNames = []; // 模组内部名（用于去前缀）
-let modSpritesOverride = new Map(); // basename -> Blob（sprites-override）
-let modSpritesNormal = new Map(); // basename -> Blob（sprites/，已剔除被 override 覆盖的键）
+let modOverrideIndex = new Map(); // basename -> 提供该贴图的模组（sprites-override）
+let modNormalIndex = new Map(); // basename -> 提供该贴图的模组（sprites/）
 let modLayersMap = {}; // 方块名 -> [贴图层名, ...]
 let modBlockSizes = new Map(); // 方块名（内部名/base）-> size
 let modRequirementsTable = {}; // 方块名 -> requirements
@@ -115,11 +115,29 @@ function spriteRelPath(name) {
   return null;
 }
 
-async function fetchBitmap(url) {
-  const res = await fetchCached(url);
-  if (!res.ok) throw new Error("HTTP " + res.status);
+async function bitmapFromResponse(res) {
+  if (!res || !res.ok) throw new Error("HTTP " + (res ? res.status : "0"));
   const blob = await res.blob();
   return await createImageBitmap(blob);
+}
+
+/** 同源贴图（本地 assets/sprites、sprite_index.json）。 */
+async function fetchBitmapLocal(url) {
+  return bitmapFromResponse(await fetchCached(url));
+}
+
+let lastSwitchNote = 0;
+function noteSourceSwitch(from, to) {
+  // 并发请求会同时切换，节流提示
+  const now = Date.now();
+  if (now - lastSwitchNote < 1500) return;
+  lastSwitchNote = now;
+  setStatus(`下载超时，已切换镜像：${sourceHost(to)}`);
+}
+
+/** Mindustry CDN 贴图：超时 + 镜像源自动切换 + 规范化缓存。 */
+async function fetchBitmapMindustry(relPath) {
+  return bitmapFromResponse(await fetchMindustryCached(relPath, { onSwitch: noteSourceSwitch }));
 }
 
 function bitmapToSprite(bmp) {
@@ -144,11 +162,11 @@ async function blobToSprite(blob) {
   return bitmapToSprite(bmp);
 }
 
-/** 由 mods 重建所有派生结构（贴图表、多层表、方块尺寸、耗材表、bundle）。 */
+/** 由 mods 重建所有派生结构（贴图索引、多层表、方块尺寸、耗材表、bundle）。 */
 function rebuildModDerived() {
   modNames = mods.map((m) => m.name);
-  modSpritesOverride = new Map();
-  modSpritesNormal = new Map();
+  modOverrideIndex = new Map();
+  modNormalIndex = new Map();
   modBlockSizes = new Map();
   modRequirementsTable = {};
   modBundle = new Map();
@@ -156,9 +174,9 @@ function rebuildModDerived() {
 
   for (const m of mods) {
     // override 优先；normal 中剔除同名（被 override 覆盖）
-    for (const [k, v] of m.spritesOverride) modSpritesOverride.set(k, v);
-    for (const [k, v] of m.sprites) {
-      if (!m.spritesOverride.has(k)) modSpritesNormal.set(k, v);
+    for (const k of m.spritesOverride.keys()) modOverrideIndex.set(k, m);
+    for (const k of m.sprites.keys()) {
+      if (!m.spritesOverride.has(k)) modNormalIndex.set(k, m);
     }
     // 方块尺寸 + 耗材（内部名与 base 都注册）
     for (const [key, def] of m.blocks) {
@@ -191,15 +209,33 @@ function rebuildModDerived() {
   setModLayers(modLayersMap);
 }
 
-/** 在模组贴图中按候选名查找（override 优先，再 normal）。 */
-function findModSprite(name) {
+/** 模组 sprites-override 贴图（懒解压）。 */
+async function modOverrideSprite(name) {
   for (const c of modSpriteCandidates(name, modNames)) {
-    if (modSpritesOverride.has(c)) return modSpritesOverride.get(c);
-  }
-  for (const c of modSpriteCandidates(name, modNames)) {
-    if (modSpritesNormal.has(c)) return modSpritesNormal.get(c);
+    const owner = modOverrideIndex.get(c);
+    if (owner) {
+      const blob = await owner.spritesOverride.get(c);
+      if (blob) return blob;
+    }
   }
   return null;
+}
+
+/** 模组 sprites 贴图（懒解压；override 已在前面处理）。 */
+async function modNormalSprite(name) {
+  for (const c of modSpriteCandidates(name, modNames)) {
+    const owner = modNormalIndex.get(c);
+    if (owner) {
+      const blob = await owner.sprites.get(c);
+      if (blob) return blob;
+    }
+  }
+  return null;
+}
+
+/** 在模组贴图中按候选名查找（override 优先，再 normal）。 */
+async function findModSprite(name) {
+  return (await modOverrideSprite(name)) || (await modNormalSprite(name));
 }
 
 /** 方块是否有已知定义（vanilla 索引 / sprites / 模组）。 */
@@ -227,18 +263,14 @@ function modItemName(ref) {
   return hit || null;
 }
 
-/** 耗材物品图标：优先模组贴图（item-<ref> / <ref>），返回 { blob } 或 null。 */
-function modItemSprite(ref) {
-  for (const c of [`item-${ref}`, ref]) {
-    if (modSpritesOverride.has(c)) return modSpritesOverride.get(c);
-    if (modSpritesNormal.has(c)) return modSpritesNormal.get(c);
-  }
-  return null;
+/** 耗材物品图标：优先模组贴图（item-<ref> / <ref>，懒解压），返回 Blob 或 null。 */
+async function modItemSprite(ref) {
+  return (await findModSprite(`item-${ref}`)) || (await findModSprite(ref));
 }
 
 /**
  * 加载单个贴图。顺序：内存 → 模组 sprites-override → 本地 assets/sprites →
- * CDN（原逻辑）→ 模组 sprites → 占位（尺寸优先取模组 JSON size）。
+ * CDN 镜像（超时/切换）→ 模组 sprites → 占位（尺寸优先取模组 JSON size）。
  * required=true 时缺失返回占位块；否则返回 null（叠加层缺失直接跳过）。
  */
 async function loadSprite(name, required) {
@@ -246,8 +278,8 @@ async function loadSprite(name, required) {
   const cands = modSpriteCandidates(name, modNames);
 
   // 1. 模组 sprites-override
-  for (const c of cands) {
-    const blob = modSpritesOverride.get(c);
+  {
+    const blob = await modOverrideSprite(name);
     if (blob) {
       const sp = await blobToSprite(blob);
       spriteCache.set(name, sp);
@@ -259,7 +291,7 @@ async function loadSprite(name, required) {
   if (localBaseOk !== false) {
     for (const c of cands) {
       try {
-        const bmp = await fetchBitmap(LOCAL_SPRITE_DIR + c + ".png");
+        const bmp = await fetchBitmapLocal(LOCAL_SPRITE_DIR + c + ".png");
         const sp = bitmapToSprite(bmp);
         spriteCache.set(name, sp);
         localBaseOk = true;
@@ -271,11 +303,11 @@ async function loadSprite(name, required) {
     }
   }
 
-  // 3. CDN（vanilla 索引）
+  // 3. CDN（vanilla 索引；镜像源自动切换）
   const rel = spriteRelPath(name);
   if (rel) {
     try {
-      const bmp = await fetchBitmap(CDN_PREFIX + rel.base + rel.path);
+      const bmp = await fetchBitmapMindustry(rel.base + rel.path);
       const sp = bitmapToSprite(bmp);
       spriteCache.set(name, sp);
       return sp;
@@ -285,8 +317,8 @@ async function loadSprite(name, required) {
   }
 
   // 4. 模组 sprites（普通）
-  for (const c of cands) {
-    const blob = modSpritesNormal.get(c);
+  {
+    const blob = await modNormalSprite(name);
     if (blob) {
       const sp = await blobToSprite(blob);
       spriteCache.set(name, sp);
@@ -712,7 +744,7 @@ function buildLegend(schem) {
 }
 
 /** 总耗材面板（vanilla + 模组合并累加；无数据不显示）。 */
-function buildRequirements(schem) {
+async function buildRequirements(schem) {
   const table = Object.assign({}, BLOCK_REQUIREMENTS, modRequirementsTable);
   const list = requirementsList(schem.tiles, table, modItemName);
   if (!list.length) {
@@ -729,19 +761,19 @@ function buildRequirements(schem) {
     img.className = "req-icon";
     img.alt = name;
     img.loading = "lazy";
-    const blob = modItemSprite(item);
+    const blob = await modItemSprite(item);
     if (blob) {
       // 模组物品图标（Blob → object URL，加载后释放）
       const url = URL.createObjectURL(blob);
       img.src = url;
       img.addEventListener("load", () => URL.revokeObjectURL(url), { once: true });
     } else {
-      // 原逻辑：assets/icons 码点图标 → item-<name> 贴图（本地 → CDN）
+      // 原逻辑：assets/icons 码点图标 → item-<name> 贴图（本地 → 当前镜像源）
       const spriteName = "item-" + item;
       const rel = spriteRelPath(spriteName);
       img.src = itemIconSrc(item) || LOCAL_SPRITE_DIR + spriteName + ".png";
       if (rel) {
-        const cdn = CDN_PREFIX + rel.base + rel.path;
+        const cdn = preferredSource() + rel.base + rel.path;
         img.addEventListener(
           "error",
           () => {
@@ -873,7 +905,7 @@ async function renderCurrent(schem) {
   buildProcButtons(procButtons);
   buildHotspots(schem, layout, tiles);
   buildLegend(schem);
-  buildRequirements(schem);
+  await buildRequirements(schem);
   els.exportBtn.disabled = false;
 
   const missing = lastMissing;
@@ -939,7 +971,7 @@ function renderModList() {
     title.textContent = `${m.displayName || m.name}（${m.name}）`;
     const sub = document.createElement("div");
     sub.className = "mod-sub";
-    sub.textContent = `${modBlockCount(m)} 方块 · ${m.sprites.size} 贴图 · ${m.fileName}`;
+    sub.textContent = `${modBlockCount(m)} 方块 · 贴图 ${m.sprites.size}（按需加载） · ${m.fileName}`;
     info.append(title, sub);
     const rm = document.createElement("button");
     rm.className = "mod-remove";
@@ -968,7 +1000,7 @@ async function addModFiles(files) {
       mods = mods.filter((x) => x.fileName !== file.name);
       mods.push(m);
       await putMod(file.name, new Blob([buf]));
-      names.push(`${m.displayName || m.name}（${modBlockCount(m)} 方块 / ${m.sprites.size} 贴图）`);
+      names.push(`${m.displayName || m.name}（${modBlockCount(m)} 方块 / 贴图 ${m.sprites.size}）`);
     } catch (e) {
       fail++;
       console.error(e);
