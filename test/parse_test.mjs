@@ -26,6 +26,9 @@ import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, I
 import { ICON_BY_CODE, ICON_LOCAL_CODES } from "../js/icons_data.js";
 import { simpleHash, createPrefetchManager } from "../js/prefetch.js";
 import { computeRequirements, requirementsList } from "../js/requirements.js";
+import { BLOCK_REQUIREMENTS } from "../js/requirements_data.js";
+import { openZip } from "../js/zip.js";
+import { parseMod, modSpriteCandidates, looseJson, parseRequirements } from "../js/mod.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -431,6 +434,113 @@ function testRequirements() {
 }
 
 // -----------------------------------------------------------------------------
+// 6. 模组支持（zip 读取 / 解析 / 需求 / 纯逻辑）
+// -----------------------------------------------------------------------------
+const MOD_DIR = "/data/data/com.termux/files/usr/tmp/opencode";
+const MOD_67 = path.join(MOD_DIR, "mod_67kj.zip");
+const MOD_BH = path.join(MOD_DIR, "mod_baohuo.zip");
+
+async function testMods() {
+  console.log("== 模组测试 ==");
+  const has67 = fs.existsSync(MOD_67);
+  const hasBH = fs.existsSync(MOD_BH);
+
+  // 纯逻辑部分：即使 zip 缺失也应运行
+  check("stripComments/looseJson 宽松解析", (() => {
+    const o = looseJson('{\n // 注释\n "name":"x", "size":2 }\n');
+    return o.name === "x" && o.size === 2;
+  })());
+  check("parseRequirements 两种格式", (() => {
+    const r = parseRequirements(["copper/5", { item: "lead", amount: 5 }]);
+    return r.length === 2 && r[0][0] === "copper" && r[0][1] === 5 && r[1][0] === "lead" && r[1][1] === 5;
+  })());
+  check(
+    "modSpriteCandidates 去模组前缀",
+    JSON.stringify(modSpriteCandidates("饱和火力-前沿实验室", ["饱和火力"])) ===
+      JSON.stringify(["饱和火力-前沿实验室", "前沿实验室"]),
+    JSON.stringify(modSpriteCandidates("饱和火力-前沿实验室", ["饱和火力"]))
+  );
+  check(
+    "computeRequirements 合并模组条目",
+    (() => {
+      const t = { "饱和火力-拓断": [["copper", 10]] };
+      return computeRequirements([{ block: "饱和火力-拓断" }], t).get("copper") === 10;
+    })()
+  );
+
+  if (!has67 && !hasBH) {
+    console.log("  SKIP：未找到模组 zip（" + MOD_DIR + "）");
+    return;
+  }
+
+  // ---- zip 读取 ----
+  if (has67) {
+    const z = await openZip(fs.readFileSync(MOD_67));
+    check("67科技 zip 条目 >100", z.entries.length > 100, `entries=${z.entries.length}`);
+  }
+  if (hasBH) {
+    const z = await openZip(fs.readFileSync(MOD_BH));
+    check("饱和火力 zip 条目 >2500", z.entries.length > 2500, `entries=${z.entries.length}`);
+  }
+
+  // ---- 67科技 ----
+  if (has67) {
+    const m = await parseMod(fs.readFileSync(MOD_67), "mod_67kj.zip");
+    check("67科技 name=无限", m.name === "无限", `name=${m.name}`);
+    check("67科技 blocks=31", modBlockCount(m) === 31, `blocks=${modBlockCount(m)}`);
+    check("67科技 sprites=122", m.sprites.size === 122, `sprites=${m.sprites.size}`);
+    const pump = m.blocks.get("无限-便携式抽水机");
+    check("67科技 便携式抽水机存在", !!pump);
+    if (pump) {
+      check(
+        "67科技 便携式抽水机需求 = copper5/lead5/graphite5",
+        JSON.stringify(pump.requirements) === JSON.stringify([["copper", 5], ["lead", 5], ["graphite", 5]]),
+        JSON.stringify(pump.requirements)
+      );
+    }
+  }
+
+  // ---- 饱和火力 ----
+  if (hasBH) {
+    const m = await parseMod(fs.readFileSync(MOD_BH), "mod_baohuo.zip");
+    check("饱和火力 name=饱和火力", m.name === "饱和火力", `name=${m.name}`);
+    check("饱和火力 blocks=303", modBlockCount(m) === 303, `blocks=${modBlockCount(m)}`);
+    check("饱和火力 sprites≥2000（含 override）", m.sprites.size >= 2000, `sprites=${m.sprites.size}`);
+    check(
+      "饱和火力 bundle 有 block.饱和火力-前沿实验室.name",
+      m.bundle.get("block.饱和火力-前沿实验室.name") === "前沿实验室",
+      m.bundle.get("block.饱和火力-前沿实验室.name")
+    );
+    for (const it of ["硅钢", "纳米核", "一级协议"]) {
+      check(`饱和火力 bundle item.饱和火力-${it}.name`, !!m.bundle.get(`item.饱和火力-${it}.name`), m.bundle.get(`item.饱和火力-${it}.name`));
+    }
+    const lab = m.blocks.get("饱和火力-前沿实验室");
+    check("饱和火力 前沿实验室存在", !!lab);
+    if (lab) {
+      check("饱和火力 前沿实验室 size=3", lab.size === 3, `size=${lab.size}`);
+      check(
+        "饱和火力 前沿实验室需求匹配",
+        JSON.stringify(lab.requirements) ===
+          JSON.stringify([["lead", 220], ["thorium", 180], ["硅钢", 150], ["纳米核", 80], ["一级协议", 5]]),
+        JSON.stringify(lab.requirements)
+      );
+      // 合并后的总耗材表应包含模组条目
+      const merged = Object.assign({}, BLOCK_REQUIREMENTS, { "饱和火力-前沿实验室": lab.requirements });
+      const total = computeRequirements([{ block: "饱和火力-前沿实验室" }], merged);
+      check("模组耗材合并到总表 lead=220", total.get("lead") === 220, `lead=${total.get("lead")}`);
+      check("模组耗材合并到总表 硅钢=150", total.get("硅钢") === 150, `硅钢=${total.get("硅钢")}`);
+    }
+  }
+}
+
+function modBlockCount(m) {
+  let n = 0;
+  const p = m.name + "-";
+  for (const k of m.blocks.keys()) if (k.startsWith(p)) n++;
+  return n;
+}
+
+// -----------------------------------------------------------------------------
 // 入口
 // -----------------------------------------------------------------------------
 async function main() {
@@ -446,6 +556,7 @@ async function main() {
   testIcons();
   await testPrefetch();
   testRequirements();
+  await testMods();
 
   console.log("");
   console.log(`结果：PASS ${pass}，FAIL ${fail}`);

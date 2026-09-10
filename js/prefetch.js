@@ -81,6 +81,11 @@ export function createPrefetchManager(parse, load) {
 
   return {
     ensure,
+    /** 使已缓存结果失效（模组变化后调用）：后续 ensure 会重新解析并加载。 */
+    invalidate() {
+      seq++;
+      cur = null;
+    },
     get current() {
       return cur;
     },

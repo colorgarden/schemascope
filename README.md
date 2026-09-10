@@ -24,6 +24,8 @@ web/
   js/icons_data.js      PUA 码点表（由 icons.properties 生成）
   js/prefetch.js        输入哈希 + 预加载管理器（可单测）
   js/cache.js           Cache Storage 持久化缓存（SWR + TTL）
+  js/zip.js             纯 JS zip 读取器（STORED/DEFLATE，可单测）
+  js/mod.js             模组 zip 解析（方块/贴图/bundle，可单测）
   js/requirements.js    蓝图总耗材计算（可单测）
   js/requirements_data.js 方块耗材表 BLOCK_REQUIREMENTS + 物品中文名 ITEM_CN
   js/app.js             UI 逻辑
@@ -136,7 +138,30 @@ UI emoji → 去掉。
   渲染完成后，`js/requirements.js` 的 `computeRequirements()` / `requirementsList()`
   累加并在页面显示「耗材」面板（物品图标 + 中文名 + ×数量，按数量降序）。
 
-## 六、输入即解析与持久化缓存
+## 六、模组支持
+
+支持载入 Mindustry 模组 zip（`.zip` / `.jar` 同格式）来渲染模组建筑并统计模组耗材。
+
+- **载入方式**：输入区下方「模组」小节，多选或拖拽 `.zip/.jar`；显示名称/内部名 + 方块数 + 贴图数；可单个移除或清除全部。
+- **持久化**：zip 存入 Cache Storage（缓存名 `msch-mods-v1`，key `/__mods__/<文件名>`），
+  下次打开自动重新加载；移除/清除时同步删除。
+- **解析**（`js/mod.js` + `js/zip.js`，纯 JS、无第三方库）：
+  - `mod.json` 的 `name` 为内部模组名，方块内部名 = `<name>-<文件名去.json>`。
+  - 宽松 JSON：支持 `//`、`/* */` 注释、尾随逗号、缺失逗号（部分模组 JSON 不规范）。
+  - `requirements` 同时支持 `"item/amount"` 与 `{item,amount}`。
+  - 贴图按文件名（去扩展名）索引，`sprites-override/**` 覆盖 `sprites/**`。
+  - `bundles/bundle_zh_CN.properties` / `bundle.properties` 提供方块与物品中文名。
+- **渲染集成**：贴图查找顺序为 内存 → 模组 `sprites-override` → 本地 `assets/sprites` →
+  CDN（原逻辑）→ 模组 `sprites` → 占位；模组方块缺失贴图但 JSON 有 `size` 时按该尺寸占位；
+  模组方块多层启发式（`<base>-base` 在前、`<base>-top` 在后）仅在 vanilla `LAYERS`
+  未定义该块时生效。
+- **耗材集成**：总耗材表 = vanilla `BLOCK_REQUIREMENTS` + 所有模组方块（内部名与 base 都注册）；
+  物品名优先取模组 bundle `item.<内部名>.name`，物品图标优先模组贴图（`item-<ref>` / `<ref>`）。
+- **限制**：JSON / 混合模组可完整支持建筑与耗材；**纯 dex 模组**（无 JSON 方块定义）
+  只能按文件名使用其贴图，无法获取建筑尺寸与耗材。
+- 模组变化后会清空内存贴图缓存并自动重渲染当前蓝图；未识别方块会在状态栏提示可能缺少的模组。
+
+## 七、输入即解析与持久化缓存
 
 ### 输入即解析 + 预加载
 - 在文本框 `input`、文件选择 `change`、拖拽 `drop` 三处加了 **350ms 防抖自动解析**：
@@ -158,7 +183,7 @@ UI emoji → 去掉。
   `fetch` + 会话内内存缓存，不报错。
 - 状态栏会显示「（缓存命中 X 张）」；页脚「清除缓存」可删除 `msch-cache-v1` 与时间戳。
 
-## 七、本地预览
+## 八、本地预览
 
 ```bash
 cd web
@@ -169,11 +194,11 @@ python3 -m http.server 8000
 直接双击 `index.html`（`file://`）也能打开界面，但浏览器会因同源策略拦截
 本地文件读取；请务必用上面的 `http.server` 方式预览。
 
-## 八、运行测试
+## 九、运行测试
 
 ```bash
 cd web
-node --check js/data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/requirements.js js/requirements_data.js js/app.js
+node --check js/data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/app.js
 node test/parse_test.mjs
 ```
 
@@ -183,12 +208,12 @@ node test/parse_test.mjs
 与 PUA 图标单测（`resolveIcon` 锚点、`richText`/`plainTextWithIcons`）。
 需要 Node 18+（内置 `DecompressionStream`）。
 
-## 九、浏览器要求
+## 十、浏览器要求
 
 依赖原生 `DecompressionStream('deflate')` 解压蓝图，需较新版本的
 Chrome / Edge / Safari / Firefox。若浏览器过旧，页面会给出明确中文提示。
 
-## 十、许可证
+## 十一、许可证
 
 **MIT License**（详见根目录 [LICENSE](LICENSE) 文件）。
 

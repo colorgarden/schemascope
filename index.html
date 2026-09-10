@@ -31,6 +31,19 @@
   </section>
 
   <section class="panel">
+    <div class="section-title">模组</div>
+    <div class="row mod-row">
+      <label class="file-btn">
+        添加模组（.zip / .jar）
+        <input id="mod-input" type="file" accept=".zip,.jar,application/zip,application/java-archive" multiple hidden>
+      </label>
+      <button id="mod-clear" class="btn ghost">清除全部模组</button>
+    </div>
+    <div id="mod-drop" class="mod-drop">把模组 .zip / .jar 拖到这里（支持 JSON / 混合模组）</div>
+    <div id="mod-list" class="mod-list"></div>
+  </section>
+
+  <section class="panel">
     <div class="section-title">渲染选项</div>
     <div class="controls">
       <label class="ctl">

@@ -11,6 +11,7 @@
 // =============================================================================
 
 const CACHE_NAME = "msch-cache-v1";
+const MOD_CACHE_NAME = "msch-mods-v1";
 const META_KEY = "msch-cache-meta";
 const TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 天
 
@@ -125,4 +126,82 @@ export async function clearPersistentCache() {
   }
   resetCacheInfo();
   return ok;
+}
+
+// -----------------------------------------------------------------------------
+// 模组 zip 持久化（独立缓存 msch-mods-v1，key 形如 /__mods__/<文件名>）
+// -----------------------------------------------------------------------------
+
+const MOD_KEY_PREFIX = "/__mods__/";
+
+async function openModCache() {
+  if (!hasCacheStorage()) return null;
+  try {
+    return await caches.open(MOD_CACHE_NAME);
+  } catch (e) {
+    return null;
+  }
+}
+
+function modRequest(fileName) {
+  return new Request(MOD_KEY_PREFIX + encodeURIComponent(fileName));
+}
+
+/** 保存模组 zip（失败返回 false，不抛错）。 */
+export async function putMod(fileName, data) {
+  const cache = await openModCache();
+  if (!cache) return false;
+  try {
+    const body = data instanceof Blob ? data : new Blob([data]);
+    await cache.put(modRequest(fileName), new Response(body));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/** 列出缓存中的模组：[{ fileName, blob }]。 */
+export async function listMods() {
+  const cache = await openModCache();
+  if (!cache) return [];
+  const out = [];
+  try {
+    const keys = await cache.keys();
+    for (const req of keys) {
+      const m = req.url.match(/\/__mods__\/(.+)$/);
+      if (!m) continue;
+      let fileName;
+      try {
+        fileName = decodeURIComponent(m[1]);
+      } catch (e) {
+        fileName = m[1];
+      }
+      const resp = await cache.match(req);
+      if (resp) out.push({ fileName, blob: await resp.blob() });
+    }
+  } catch (e) {
+    return out;
+  }
+  return out;
+}
+
+/** 删除指定模组缓存。 */
+export async function deleteMod(fileName) {
+  const cache = await openModCache();
+  if (!cache) return false;
+  try {
+    return await cache.delete(modRequest(fileName));
+  } catch (e) {
+    return false;
+  }
+}
+
+/** 清空全部模组缓存。 */
+export async function clearMods() {
+  try {
+    if (hasCacheStorage()) await caches.delete(MOD_CACHE_NAME);
+    return true;
+  } catch (e) {
+    return false;
+  }
 }

@@ -28,11 +28,14 @@ export function computeRequirements(tiles, table = BLOCK_REQUIREMENTS) {
 
 /**
  * 返回排序后的耗材列表：[{ item, name, count }]，按数量降序，再按名称升序。
- * 名称优先 ITEM_CN，其次 CONTENT_CN，最后英文名。
+ * 名称优先 nameOf(item)（模组 bundle），其次 ITEM_CN，再 CONTENT_CN，最后英文名。
  */
-export function requirementsList(tiles, table = BLOCK_REQUIREMENTS) {
+export function requirementsList(tiles, table = BLOCK_REQUIREMENTS, nameOf = null) {
   const totals = computeRequirements(tiles, table);
   return [...totals.entries()]
-    .map(([item, count]) => ({ item, name: ITEM_CN[item] || CONTENT_CN[item] || item, count }))
+    .map(([item, count]) => {
+      const modName = nameOf ? nameOf(item) : null;
+      return { item, name: modName || ITEM_CN[item] || CONTENT_CN[item] || item, count };
+    })
     .sort((a, b) => b.count - a.count || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }

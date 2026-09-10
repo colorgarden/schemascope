@@ -24,6 +24,14 @@ import {
   BRIDGE_OPACITY,
 } from "./data.js";
 
+// 模组方块的多层启发式（仅当 vanilla LAYERS 未定义该块时使用）
+let MOD_LAYERS = {};
+
+/** 注入模组多层表（app.js 在模组变化时调用；不会覆盖 vanilla 的 LAYERS）。 */
+export function setModLayers(map) {
+  MOD_LAYERS = map || {};
+}
+
 // -----------------------------------------------------------------------------
 // 数值辅助（对齐 Python 的 // 与 int()/round() 语义）
 // -----------------------------------------------------------------------------
@@ -680,7 +688,7 @@ export function renderSchematic(schem, sprites, opts = {}) {
     const cx = e.px + Math.floor((e.size * TILE) / 2);
     const cy = e.py + Math.floor((e.size * TILE) / 2);
 
-    const names = layers ? LAYERS[t.block] || [t.block] : [t.block];
+    const names = layers ? LAYERS[t.block] || MOD_LAYERS[t.block] || [t.block] : [t.block];
     for (let li = 0; li < names.length; li++) {
       const lname = names[li];
       const optional = lname !== t.block;

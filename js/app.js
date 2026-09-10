@@ -16,11 +16,13 @@ import {
   DEFAULT_PAD,
 } from "./data.js";
 import { parseSchematic, extractLogic, isProcessor } from "./parser.js";
-import { renderSchematic, getSprite, makePlaceholder } from "./render.js";
+import { renderSchematic, getSprite, makePlaceholder, setModLayers } from "./render.js";
 import { setIconIndex, richText, plainTextWithIcons, itemIconSrc } from "./icons.js";
 import { simpleHash, createPrefetchManager } from "./prefetch.js";
-import { fetchCached, clearPersistentCache, cacheInfo } from "./cache.js";
+import { fetchCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js";
 import { requirementsList } from "./requirements.js";
+import { BLOCK_REQUIREMENTS } from "./requirements_data.js";
+import { parseMod, modSpriteCandidates } from "./mod.js";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -60,6 +62,10 @@ const els = {
   copyOk: $("copy-ok"),
   clearCache: $("clear-cache"),
   drop: $("drop"),
+  modInput: $("mod-input"),
+  modDrop: $("mod-drop"),
+  modList: $("mod-list"),
+  modClear: $("mod-clear"),
 };
 
 // -----------------------------------------------------------------------------
@@ -71,6 +77,16 @@ let localBaseOk = null; // 推断 assets/sprites/ 是否存在，避免满屏 40
 let current = null; // { schem, tiles, layout, name }
 let currentText = "";
 let renderOpts = { scale: DEFAULT_SCALE, pad: DEFAULT_PAD, transparent: false, grid: false };
+
+// ---- 模组状态 ----
+let mods = []; // 已加载模组（parseMod 结果）
+let modNames = []; // 模组内部名（用于去前缀）
+let modSpritesOverride = new Map(); // basename -> Blob（sprites-override）
+let modSpritesNormal = new Map(); // basename -> Blob（sprites/，已剔除被 override 覆盖的键）
+let modLayersMap = {}; // 方块名 -> [贴图层名, ...]
+let modBlockSizes = new Map(); // 方块名（内部名/base）-> size
+let modRequirementsTable = {}; // 方块名 -> requirements
+let modBundle = new Map(); // bundle key -> value（合并所有模组）
 
 // -----------------------------------------------------------------------------
 // 贴图加载
@@ -118,32 +134,168 @@ function bitmapToSprite(bmp) {
   return { w, h, size: Math.max(1, Math.floor(w / TILE)), rgba, placeholder: false };
 }
 
+// -----------------------------------------------------------------------------
+// 模组：派生数据 / 贴图候选
+// -----------------------------------------------------------------------------
+
+async function blobToSprite(blob) {
+  const bmp = await createImageBitmap(blob);
+  return bitmapToSprite(bmp);
+}
+
+/** 由 mods 重建所有派生结构（贴图表、多层表、方块尺寸、耗材表、bundle）。 */
+function rebuildModDerived() {
+  modNames = mods.map((m) => m.name);
+  modSpritesOverride = new Map();
+  modSpritesNormal = new Map();
+  modBlockSizes = new Map();
+  modRequirementsTable = {};
+  modBundle = new Map();
+  modLayersMap = {};
+
+  for (const m of mods) {
+    // override 优先；normal 中剔除同名（被 override 覆盖）
+    for (const [k, v] of m.spritesOverride) modSpritesOverride.set(k, v);
+    for (const [k, v] of m.sprites) {
+      if (!m.spritesOverride.has(k)) modSpritesNormal.set(k, v);
+    }
+    // 方块尺寸 + 耗材（内部名与 base 都注册）
+    for (const [key, def] of m.blocks) {
+      modBlockSizes.set(key, def.size);
+      modRequirementsTable[key] = def.requirements;
+    }
+    // bundle
+    for (const [k, v] of m.bundle) modBundle.set(k, v);
+  }
+
+  // 模组多层启发式：<base>-base 先画、<base> 居中、<base>-top 后画
+  for (const m of mods) {
+    const has = (n) => m.spritesOverride.has(n) || m.sprites.has(n);
+    const seen = new Set();
+    for (const [, def] of m.blocks) {
+      if (seen.has(def.base)) continue;
+      seen.add(def.base);
+      const base = def.base;
+      if (!has(base)) continue;
+      const layers = [];
+      if (has(base + "-base")) layers.push(base + "-base");
+      layers.push(base);
+      if (has(base + "-top")) layers.push(base + "-top");
+      if (layers.length > 1) {
+        modLayersMap[m.name + "-" + base] = layers;
+        modLayersMap[base] = layers;
+      }
+    }
+  }
+  setModLayers(modLayersMap);
+}
+
+/** 在模组贴图中按候选名查找（override 优先，再 normal）。 */
+function findModSprite(name) {
+  for (const c of modSpriteCandidates(name, modNames)) {
+    if (modSpritesOverride.has(c)) return modSpritesOverride.get(c);
+  }
+  for (const c of modSpriteCandidates(name, modNames)) {
+    if (modSpritesNormal.has(c)) return modSpritesNormal.get(c);
+  }
+  return null;
+}
+
+/** 方块是否有已知定义（vanilla 索引 / sprites / 模组）。 */
+function isKnownBlock(name) {
+  if (spriteIndex.blocks && spriteIndex.blocks[name]) return true;
+  if (spriteIndex.all && spriteIndex.all[name]) return true;
+  if (modBlockSizes.has(name)) return true;
+  for (const c of modSpriteCandidates(name, modNames)) {
+    if (modBlockSizes.has(c) || (spriteIndex.all && spriteIndex.all[c]) || (spriteIndex.blocks && spriteIndex.blocks[c])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** 耗材物品显示名：优先模组 bundle 的 item.<内部名>.name（尝试 <mod>-<ref> 与 <ref>）。 */
+function modItemName(ref) {
+  for (const m of mods) {
+    const k1 = `item.${m.name}-${ref}.name`;
+    const k2 = `item.${ref}.name`;
+    if (m.bundle.has(k1)) return m.bundle.get(k1);
+    if (m.bundle.has(k2)) return m.bundle.get(k2);
+  }
+  const hit = modBundle.get(`item.${ref}.name`);
+  return hit || null;
+}
+
+/** 耗材物品图标：优先模组贴图（item-<ref> / <ref>），返回 { blob } 或 null。 */
+function modItemSprite(ref) {
+  for (const c of [`item-${ref}`, ref]) {
+    if (modSpritesOverride.has(c)) return modSpritesOverride.get(c);
+    if (modSpritesNormal.has(c)) return modSpritesNormal.get(c);
+  }
+  return null;
+}
+
 /**
- * 加载单个贴图。顺序：内存缓存 → assets/sprites/<name>.png → jsDelivr CDN。
+ * 加载单个贴图。顺序：内存 → 模组 sprites-override → 本地 assets/sprites →
+ * CDN（原逻辑）→ 模组 sprites → 占位（尺寸优先取模组 JSON size）。
  * required=true 时缺失返回占位块；否则返回 null（叠加层缺失直接跳过）。
  */
 async function loadSprite(name, required) {
   if (spriteCache.has(name)) return spriteCache.get(name);
+  const cands = modSpriteCandidates(name, modNames);
 
-  const rel = spriteRelPath(name);
-  const urls = [];
-  if (localBaseOk !== false) urls.push(LOCAL_SPRITE_DIR + name + ".png");
-  if (rel) urls.push(CDN_PREFIX + rel.base + rel.path);
-
-  for (const url of urls) {
-    try {
-      const bmp = await fetchBitmap(url);
-      const sp = bitmapToSprite(bmp);
+  // 1. 模组 sprites-override
+  for (const c of cands) {
+    const blob = modSpritesOverride.get(c);
+    if (blob) {
+      const sp = await blobToSprite(blob);
       spriteCache.set(name, sp);
-      if (url.startsWith(LOCAL_SPRITE_DIR)) localBaseOk = true;
       return sp;
-    } catch (e) {
-      if (url.startsWith(LOCAL_SPRITE_DIR)) localBaseOk = false;
-      // 继续尝试下一个来源
     }
   }
 
-  const sp = required ? makePlaceholder(1) : null;
+  // 2. 本地 assets/sprites（自托管 vanilla）
+  if (localBaseOk !== false) {
+    for (const c of cands) {
+      try {
+        const bmp = await fetchBitmap(LOCAL_SPRITE_DIR + c + ".png");
+        const sp = bitmapToSprite(bmp);
+        spriteCache.set(name, sp);
+        localBaseOk = true;
+        return sp;
+      } catch (e) {
+        localBaseOk = false;
+        break;
+      }
+    }
+  }
+
+  // 3. CDN（vanilla 索引）
+  const rel = spriteRelPath(name);
+  if (rel) {
+    try {
+      const bmp = await fetchBitmap(CDN_PREFIX + rel.base + rel.path);
+      const sp = bitmapToSprite(bmp);
+      spriteCache.set(name, sp);
+      return sp;
+    } catch (e) {
+      // 继续尝试模组贴图
+    }
+  }
+
+  // 4. 模组 sprites（普通）
+  for (const c of cands) {
+    const blob = modSpritesNormal.get(c);
+    if (blob) {
+      const sp = await blobToSprite(blob);
+      spriteCache.set(name, sp);
+      return sp;
+    }
+  }
+
+  // 5. 占位（模组方块用 JSON size）
+  const size = modBlockSizes.get(name) || 1;
+  const sp = required ? makePlaceholder(size) : null;
   spriteCache.set(name, sp);
   return sp;
 }
@@ -157,7 +309,7 @@ function collectNeeded(schem) {
   };
   for (const t of schem.tiles) {
     add(t.block, true);
-    const ls = LAYERS[t.block];
+    const ls = LAYERS[t.block] || modLayersMap[t.block];
     if (ls) for (const l of ls) add(l, l === t.block);
     if (BRIDGE_BLOCKS.has(t.block)) {
       add(t.block + "-bridge", false);
@@ -497,9 +649,10 @@ function buildLegend(schem) {
   els.legend.replaceChildren(frag);
 }
 
-/** 总耗材面板（遍历方块 requirements 累加；无数据不显示）。 */
+/** 总耗材面板（vanilla + 模组合并累加；无数据不显示）。 */
 function buildRequirements(schem) {
-  const list = requirementsList(schem.tiles);
+  const table = Object.assign({}, BLOCK_REQUIREMENTS, modRequirementsTable);
+  const list = requirementsList(schem.tiles, table, modItemName);
   if (!list.length) {
     els.reqWrap.style.display = "none";
     els.requirements.replaceChildren();
@@ -508,26 +661,42 @@ function buildRequirements(schem) {
   els.reqWrap.style.display = "block";
   const frag = document.createDocumentFragment();
   for (const { item, name, count } of list) {
-    const spriteName = "item-" + item;
-    const rel = spriteRelPath(spriteName);
-    // 优先用与文本图标同一套的原版图标文件（assets/icons/<码点>.png），
-    // 没有时回退到 item-<name> 贴图（本地 → CDN）。
-    const fb = rel ? CDN_PREFIX + rel.base + rel.path : null;
-    const src = itemIconSrc(item) || LOCAL_SPRITE_DIR + spriteName + ".png";
-    let img;
-    if (fb) {
-      img =
-        `<img class="req-icon" src="${src}" data-fb="${fb}"` +
-        ` alt="${esc(name)}" loading="lazy" onerror="this.onerror=null;this.src=this.dataset.fb">`;
-    } else {
-      img = `<img class="req-icon" src="${src}" alt="${esc(name)}" loading="lazy" onerror="this.onerror=null">`;
-    }
     const div = document.createElement("div");
     div.className = "req-item";
-    div.innerHTML =
-      img +
-      `<span class="req-name">${esc(name)}</span>` +
-      `<span class="req-count">×${count}</span>`;
+    const img = document.createElement("img");
+    img.className = "req-icon";
+    img.alt = name;
+    img.loading = "lazy";
+    const blob = modItemSprite(item);
+    if (blob) {
+      // 模组物品图标（Blob → object URL，加载后释放）
+      const url = URL.createObjectURL(blob);
+      img.src = url;
+      img.addEventListener("load", () => URL.revokeObjectURL(url), { once: true });
+    } else {
+      // 原逻辑：assets/icons 码点图标 → item-<name> 贴图（本地 → CDN）
+      const spriteName = "item-" + item;
+      const rel = spriteRelPath(spriteName);
+      img.src = itemIconSrc(item) || LOCAL_SPRITE_DIR + spriteName + ".png";
+      if (rel) {
+        const cdn = CDN_PREFIX + rel.base + rel.path;
+        img.addEventListener(
+          "error",
+          () => {
+            img.onerror = null;
+            img.src = cdn;
+          },
+          { once: true }
+        );
+      }
+    }
+    const nameEl = document.createElement("span");
+    nameEl.className = "req-name";
+    nameEl.textContent = name;
+    const countEl = document.createElement("span");
+    countEl.className = "req-count";
+    countEl.textContent = "×" + count;
+    div.append(img, nameEl, countEl);
     frag.appendChild(div);
   }
   els.requirements.replaceChildren(frag);
@@ -620,32 +789,175 @@ async function run(input) {
     // 竞态保护：等待期间输入若已改变，放弃本次渲染
     if (!prefetch.current || prefetch.current.key !== r.key) return;
 
-    setStatus("正在渲染…");
-    const result = renderToCanvas(schem);
-    const layout = result.layout;
-
-    const { tiles, procButtons, procCount } = await buildTileData(schem, layout);
-
-    current = { schem, tiles, layout, name: schem.tags.name || "蓝图" };
-    setMeta(schem, procCount);
-    buildLabels(schem);
-    buildProcButtons(procButtons);
-    buildHotspots(schem, layout, tiles);
-    buildLegend(schem);
-    buildRequirements(schem);
-    els.exportBtn.disabled = false;
-
-    const missing = lastMissing;
-    const cacheNote = cacheInfo.hits > 0 ? `（缓存命中 ${cacheInfo.hits} 张）` : "";
-    if (missing.length) {
-      setStatus(`渲染完成${cacheNote}（${missing.length} 个贴图缺失，已用占位/跳过）：${missing.slice(0, 6).join("、")}${missing.length > 6 ? "…" : ""}`);
-    } else {
-      setStatus(`渲染完成${cacheNote}。`);
-    }
+    await renderCurrent(schem);
   } catch (err) {
     console.error(err);
     showError("解析或渲染失败：" + (err && err.message ? err.message : err));
     els.exportBtn.disabled = false;
+  }
+}
+
+/** 渲染指定蓝图并重建全部 UI（run 与模组刷新共用）。 */
+async function renderCurrent(schem) {
+  setStatus("正在渲染…");
+  const result = renderToCanvas(schem);
+  const layout = result.layout;
+
+  const { tiles, procButtons, procCount } = await buildTileData(schem, layout);
+
+  current = { schem, tiles, layout, name: schem.tags.name || "蓝图" };
+  setMeta(schem, procCount);
+  buildLabels(schem);
+  buildProcButtons(procButtons);
+  buildHotspots(schem, layout, tiles);
+  buildLegend(schem);
+  buildRequirements(schem);
+  els.exportBtn.disabled = false;
+
+  const missing = lastMissing;
+  const cacheNote = cacheInfo.hits > 0 ? `（缓存命中 ${cacheInfo.hits} 张）` : "";
+  const unknown = [];
+  const seen = new Set();
+  for (const t of schem.tiles) {
+    if (!seen.has(t.block) && !isKnownBlock(t.block)) {
+      seen.add(t.block);
+      unknown.push(t.block);
+    }
+  }
+  const warns = [];
+  if (missing.length) {
+    warns.push(`贴图缺失：${missing.slice(0, 6).join("、")}${missing.length > 6 ? "…" : ""}`);
+  }
+  if (unknown.length) {
+    warns.push(`未识别方块（可能缺少模组）：${unknown.slice(0, 6).join("、")}${unknown.length > 6 ? "…" : ""}`);
+  }
+  setStatus(warns.length ? `渲染完成${cacheNote}（${warns.join("；")}）` : `渲染完成${cacheNote}。`);
+}
+
+/** 模组变化后：清内存贴图缓存并重渲染当前蓝图。 */
+async function refreshAfterMods() {
+  prefetch.invalidate();
+  if (!current || !current.schem) return;
+  const schem = current.schem;
+  setStatus("模组已更新，正在重新加载贴图…");
+  spriteCache.clear();
+  try {
+    lastMissing = (await loadAllSprites(collectNeeded(schem), onSpriteProgress)).missing;
+    await renderCurrent(schem);
+  } catch (e) {
+    showError("模组更新后重渲染失败：" + e.message);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 模组 UI
+// -----------------------------------------------------------------------------
+
+const MOD_EXT = /\.(zip|jar)$/i;
+
+function modBlockCount(m) {
+  let n = 0;
+  const p = m.name + "-";
+  for (const k of m.blocks.keys()) if (k.startsWith(p)) n++;
+  return n;
+}
+
+function renderModList() {
+  if (!els.modList) return;
+  els.modList.replaceChildren();
+  if (!mods.length) return;
+  const frag = document.createDocumentFragment();
+  for (const m of mods) {
+    const row = document.createElement("div");
+    row.className = "mod-item";
+    const info = document.createElement("div");
+    info.className = "mod-info";
+    const title = document.createElement("div");
+    title.className = "mod-name";
+    title.textContent = `${m.displayName || m.name}（${m.name}）`;
+    const sub = document.createElement("div");
+    sub.className = "mod-sub";
+    sub.textContent = `${modBlockCount(m)} 方块 · ${m.sprites.size} 贴图 · ${m.fileName}`;
+    info.append(title, sub);
+    const rm = document.createElement("button");
+    rm.className = "mod-remove";
+    rm.textContent = "移除";
+    rm.dataset.file = m.fileName;
+    row.append(info, rm);
+    frag.appendChild(row);
+  }
+  els.modList.appendChild(frag);
+}
+
+async function addModFiles(files) {
+  clearError();
+  const arr = [...files].filter((f) => MOD_EXT.test(f.name));
+  if (!arr.length) {
+    showError("请选择 .zip 或 .jar 格式的模组文件。");
+    return;
+  }
+  const names = [];
+  let fail = 0;
+  for (const file of arr) {
+    try {
+      setStatus(`正在解析模组：${file.name}…`);
+      const buf = new Uint8Array(await file.arrayBuffer());
+      const m = await parseMod(buf, file.name);
+      mods = mods.filter((x) => x.fileName !== file.name);
+      mods.push(m);
+      await putMod(file.name, new Blob([buf]));
+      names.push(`${m.displayName || m.name}（${modBlockCount(m)} 方块 / ${m.sprites.size} 贴图）`);
+    } catch (e) {
+      fail++;
+      console.error(e);
+      showError(`模组 ${file.name} 加载失败：${e.message}`);
+    }
+  }
+  rebuildModDerived();
+  renderModList();
+  await refreshAfterMods();
+  if (names.length) setStatus(`模组已加载：${names.join("、")}${fail ? `（${fail} 个失败）` : ""}`);
+}
+
+async function removeMod(fileName) {
+  mods = mods.filter((m) => m.fileName !== fileName);
+  await deleteMod(fileName);
+  rebuildModDerived();
+  renderModList();
+  await refreshAfterMods();
+  setStatus("模组已移除。");
+}
+
+async function clearAllMods() {
+  mods = [];
+  await clearMods();
+  rebuildModDerived();
+  renderModList();
+  await refreshAfterMods();
+  setStatus("已清除全部模组。");
+}
+
+/** 启动时从 Cache Storage 重新加载模组。 */
+async function loadCachedMods() {
+  try {
+    const cached = await listMods();
+    if (!cached.length) return;
+    let n = 0;
+    for (const { fileName, blob } of cached) {
+      try {
+        const m = await parseMod(blob, fileName);
+        mods = mods.filter((x) => x.fileName !== fileName);
+        mods.push(m);
+        n++;
+      } catch (e) {
+        console.warn("模组缓存加载失败：", fileName, e);
+      }
+    }
+    rebuildModDerived();
+    renderModList();
+    if (n) setStatus(`已从缓存加载 ${n} 个模组。`);
+  } catch (e) {
+    // 缓存不可用：忽略
   }
 }
 
@@ -710,6 +1022,39 @@ els.drop.addEventListener("drop", async (e) => {
     showError("读取拖入文件失败：" + err.message);
   }
 });
+
+// 模组：选择文件 / 拖拽 / 移除 / 清除全部
+if (els.modInput) {
+  els.modInput.addEventListener("change", async () => {
+    if (els.modInput.files && els.modInput.files.length) await addModFiles(els.modInput.files);
+    els.modInput.value = "";
+  });
+}
+if (els.modClear) els.modClear.addEventListener("click", clearAllMods);
+if (els.modList) {
+  els.modList.addEventListener("click", (e) => {
+    const btn = e.target.closest(".mod-remove");
+    if (btn) removeMod(btn.dataset.file);
+  });
+}
+if (els.modDrop) {
+  ["dragenter", "dragover"].forEach((ev) =>
+    els.modDrop.addEventListener(ev, (e) => {
+      e.preventDefault();
+      els.modDrop.classList.add("over");
+    })
+  );
+  ["dragleave", "drop"].forEach((ev) =>
+    els.modDrop.addEventListener(ev, (e) => {
+      e.preventDefault();
+      els.modDrop.classList.remove("over");
+    })
+  );
+  els.modDrop.addEventListener("drop", async (e) => {
+    const files = e.dataTransfer && e.dataTransfer.files;
+    if (files && files.length) await addModFiles(files);
+  });
+}
 
 // 渲染选项
 function readOpts() {
@@ -824,11 +1169,13 @@ if (els.clearCache) {
 (async function init() {
   await loadSpriteIndex();
   setIconIndex(spriteIndex);
+  await loadCachedMods();
   // 回填上次输入并触发预加载（不自动渲染）
   const last = readLastInput();
   if (last) {
     els.input.value = last;
     scheduleAutoParse(last, false);
+  } else {
+    setStatus("");
   }
-  setStatus("");
 })();
