@@ -731,6 +731,12 @@ h1 .sub {
   color: var(--danger);
 }
 
+.history-empty {
+  color: var(--muted);
+  font-size: 12.5px;
+  padding: 4px 2px;
+}
+
 footer {
   margin-top: 22px;
   padding-top: 14px;
@@ -766,6 +772,16 @@ footer p + p {
   border-radius: 6px;
   padding: 2px 4px;
   transition: color 0.15s, background 0.15s;
+}
+
+.footer-ver {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: 11.5px;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 4px;
 }
 
 .footer-link:hover {

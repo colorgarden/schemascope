@@ -25,6 +25,9 @@ import { parseMod, modSpriteCandidates, modItemCandidates } from "./mod.js";
 import { blockDisplayName as resolveBlockDisplayName } from "./names.js";
 import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js";
 
+// 版本号：与 index.html 的 ?v= 及页脚 .footer-ver 保持一致（发布时递增）
+const APP_VERSION = "20260910b";
+
 // -----------------------------------------------------------------------------
 // DOM
 // -----------------------------------------------------------------------------
@@ -994,12 +997,14 @@ let history = [];
 
 function renderHistory() {
   if (!els.historyWrap) return;
+  els.historyWrap.style.display = "block";
   if (!history.length) {
-    els.historyWrap.style.display = "none";
-    els.historyList.replaceChildren();
+    const empty = document.createElement("div");
+    empty.className = "history-empty";
+    empty.textContent = "暂无历史记录，解析蓝图后自动保存到本地";
+    els.historyList.replaceChildren(empty);
     return;
   }
-  els.historyWrap.style.display = "block";
   const frag = document.createDocumentFragment();
   for (const e of history) {
     const item = document.createElement("div");
@@ -1580,6 +1585,7 @@ if (els.clearCache) {
 
 // 初始化
 (async function init() {
+  console.info("SchemaScope v" + APP_VERSION);
   applyLayoutMode();
   await loadSpriteIndex();
   setIconIndex(spriteIndex);
