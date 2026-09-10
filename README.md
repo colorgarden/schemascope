@@ -32,7 +32,7 @@ web/
   js/history.js         本地历史记录（容量策略纯函数，可单测）
   js/requirements.js    蓝图总耗材计算（可单测）
   js/requirements_data.js 方块耗材表 BLOCK_REQUIREMENTS + 物品中文名 ITEM_CN
-  js/app.js             UI 逻辑
+  js/main.<VER>.js      入口 UI 逻辑（发布时重命名为 js/main.<VER>.js，用于路径级缓存穿透）
   assets/fonts/icon.ttf UI emoji 字体（MindustryIcons）
   assets/icons/*.png    从官方 assets.jar 导出的 530 个原版 PUA 图标
   sprite_index.json     贴图名 → 相对路径索引（blocks/items/aux/all）
@@ -64,9 +64,12 @@ web/
 
 > 提示：如果入口页面无法访问，确认仓库根目录存在 `index.html`（本工具不需要任何构建/工作流）。
 >
-> **发布须知**：GitHub Pages 默认 `cache-control: max-age=600`，用户可能看到旧缓存。
-> 每次发布请在 `index.html` 顶部的注释中**递增版本号 VER**，并同步更新
-> `css/style.css?v=`、`js/app.js?v=` 以及页脚 `.footer-ver`（三处一致），即可强制刷新。
+> **发布须知**：GitHub Pages/中间代理默认 `cache-control: max-age=600`，用户可能看到旧缓存，
+> 且 `?v=` 对部分按路径缓存的代理无效。每次发布请：
+> 1. 在 `index.html` 顶部注释中**递增版本号 VER**；
+> 2. 把入口脚本**重命名**为 `js/main.<VER>.js`（`git mv`）并更新 `index.html` 引用
+>    `js/main.<VER>.js?v=<VER>`；
+> 3. 同步 `css/style.css?v=<VER>`；页脚版本由 JS 注入（`#footer-ver`），能显示即证明新脚本已加载。
 
 ## 二、可选：自托管贴图实现离线（推荐手机使用）
 
@@ -282,7 +285,7 @@ python3 -m http.server 8000
 
 ```bash
 cd web
-node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/history.js js/app.js
+node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/history.js js/main.20260910c.js
 node test/parse_test.mjs
 ```
 

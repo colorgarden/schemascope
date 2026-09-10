@@ -737,6 +737,11 @@ h1 .sub {
   padding: 4px 2px;
 }
 
+/* 防御：即使某个旧版 JS 内联 display:none 隐藏历史小节，也强制其可见 */
+#history-wrap {
+  display: block !important;
+}
+
 footer {
   margin-top: 22px;
   padding-top: 14px;

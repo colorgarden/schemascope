@@ -25,8 +25,8 @@ import { parseMod, modSpriteCandidates, modItemCandidates } from "./mod.js";
 import { blockDisplayName as resolveBlockDisplayName } from "./names.js";
 import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js";
 
-// 版本号：与 index.html 的 ?v= 及页脚 .footer-ver 保持一致（发布时递增）
-const APP_VERSION = "20260910b";
+// 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
+const APP_VERSION = "20260910c";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -82,6 +82,7 @@ const els = {
   historyWrap: $("history-wrap"),
   historyList: $("history-list"),
   historyClear: $("history-clear"),
+  footerVer: $("footer-ver"),
 };
 
 // -----------------------------------------------------------------------------
@@ -1586,6 +1587,9 @@ if (els.clearCache) {
 // 初始化
 (async function init() {
   console.info("SchemaScope v" + APP_VERSION);
+  // 页脚版本由 JS 注入：能显示即证明新入口脚本确实已加载运行
+  const footerVer = document.getElementById("footer-ver");
+  if (footerVer) footerVer.textContent = "v" + APP_VERSION;
   applyLayoutMode();
   await loadSpriteIndex();
   setIconIndex(spriteIndex);
