@@ -18,6 +18,8 @@ import {
 import { parseSchematic, extractLogic, isProcessor } from "./parser.js";
 import { renderSchematic, getSprite, makePlaceholder } from "./render.js";
 import { setIconIndex, richText, plainTextWithIcons } from "./icons.js";
+import { simpleHash, createPrefetchManager } from "./prefetch.js";
+import { fetchCached, clearPersistentCache, cacheInfo } from "./cache.js";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -53,6 +55,7 @@ const els = {
   modalX: $("modal-x"),
   copyBtn: $("copy-btn"),
   copyOk: $("copy-ok"),
+  clearCache: $("clear-cache"),
   drop: $("drop"),
 };
 
@@ -72,7 +75,7 @@ let renderOpts = { scale: DEFAULT_SCALE, pad: DEFAULT_PAD, transparent: false, g
 
 async function loadSpriteIndex() {
   try {
-    const res = await fetch("sprite_index.json", { cache: "force-cache" });
+    const res = await fetchCached("sprite_index.json");
     if (res.ok) spriteIndex = await res.json();
   } catch (e) {
     // 使用内置兜底表（data.js 的 AUX_PATHS）
@@ -93,7 +96,7 @@ function spriteRelPath(name) {
 }
 
 async function fetchBitmap(url) {
-  const res = await fetch(url);
+  const res = await fetchCached(url);
   if (!res.ok) throw new Error("HTTP " + res.status);
   const blob = await res.blob();
   return await createImageBitmap(blob);
@@ -167,7 +170,7 @@ async function loadAllSprites(needed, onProgress) {
   const total = names.length;
   let done = 0;
   const missing = [];
-  const batchSize = 8;
+  const batchSize = 16;
   for (let i = 0; i < names.length; i += batchSize) {
     const batch = names.slice(i, i + batchSize);
     await Promise.all(
@@ -491,19 +494,92 @@ function buildLegend(schem) {
   els.legend.replaceChildren(frag);
 }
 
+// -----------------------------------------------------------------------------
+// 输入即解析 + 后台预加载（防抖）
+// -----------------------------------------------------------------------------
+
+const LAST_INPUT_KEY = "msch-last-input";
+const LAST_INPUT_MAX = 300 * 1024; // 超过 300KB 不持久化
+const AUTO_PARSE_DELAY = 350;
+
+let parsedCount = 0;
+let lastMissing = [];
+function loadSpritesFor(schem, onProgress) {
+  parsedCount = schem.tiles.length;
+  return loadAllSprites(collectNeeded(schem), onProgress).then((res) => {
+    lastMissing = res.missing;
+    return res;
+  });
+}
+const onSpriteProgress = (done, total) =>
+  setStatus(`已解析：${parsedCount} 个方块，预加载贴图 ${done}/${total}…`);
+
+const prefetch = createPrefetchManager(parseSchematic, loadSpritesFor);
+
+function saveLastInput(text) {
+  try {
+    if (typeof text !== "string" || text.length === 0) return;
+    if (text.length <= LAST_INPUT_MAX) localStorage.setItem(LAST_INPUT_KEY, text);
+    else localStorage.removeItem(LAST_INPUT_KEY);
+  } catch (e) {
+    // localStorage 不可用：忽略
+  }
+}
+
+function readLastInput() {
+  try {
+    return localStorage.getItem(LAST_INPUT_KEY) || "";
+  } catch (e) {
+    return "";
+  }
+}
+
+let autoParseTimer = null;
+/** 防抖：输入停止约 350ms 后自动解析 + 后台预加载（不自动渲染）。 */
+function scheduleAutoParse(input, persist) {
+  if (persist) saveLastInput(input);
+  clearTimeout(autoParseTimer);
+  autoParseTimer = setTimeout(() => autoParse(input), AUTO_PARSE_DELAY);
+}
+
+async function autoParse(input) {
+  const key = simpleHash(input);
+  const cur = prefetch.current;
+  if (cur && cur.key === key && cur.schem) return; // 同一份输入已解析
+  try {
+    const r = await prefetch.ensure(input, onSpriteProgress);
+    if (!r || r.race || !r.schem) return;
+    await r.promise;
+    const now = prefetch.current;
+    if (now && now.key === key) {
+      setStatus(`已解析：${r.schem.tiles.length} 个方块，贴图已预加载。`);
+    }
+  } catch (e) {
+    // 可能还没输完，静默失败；点击按钮时再报错
+  }
+}
+
 async function run(input) {
   try {
     clearError();
     setStatus("正在解析蓝图…");
     els.exportBtn.disabled = true;
 
-    const schem = await parseSchematic(input);
+    const r = await prefetch.ensure(input, onSpriteProgress);
+    if (!r || r.race || !r.schem) {
+      showError("解析失败：输入可能不是有效的蓝图。");
+      els.exportBtn.disabled = false;
+      return;
+    }
+    const schem = r.schem;
+    setStatus(
+      `已解析：${schem.tiles.length} 个方块${r.reused ? "（复用预加载）" : ""}，准备贴图…`
+    );
 
-    const needed = collectNeeded(schem);
-    setStatus(`正在加载贴图… 0/${needed.size}`);
-    const { missing } = await loadAllSprites(needed, (done, total) => {
-      setStatus(`正在加载贴图… ${done}/${total}`);
-    });
+    await r.promise;
+
+    // 竞态保护：等待期间输入若已改变，放弃本次渲染
+    if (!prefetch.current || prefetch.current.key !== r.key) return;
 
     setStatus("正在渲染…");
     const result = renderToCanvas(schem);
@@ -519,14 +595,17 @@ async function run(input) {
     buildLegend(schem);
     els.exportBtn.disabled = false;
 
+    const missing = lastMissing;
+    const cacheNote = cacheInfo.hits > 0 ? `（缓存命中 ${cacheInfo.hits} 张）` : "";
     if (missing.length) {
-      setStatus(`渲染完成（${missing.length} 个贴图缺失，已用占位/跳过）：${missing.slice(0, 6).join("、")}${missing.length > 6 ? "…" : ""}`);
+      setStatus(`渲染完成${cacheNote}（${missing.length} 个贴图缺失，已用占位/跳过）：${missing.slice(0, 6).join("、")}${missing.length > 6 ? "…" : ""}`);
     } else {
-      setStatus("渲染完成。");
+      setStatus(`渲染完成${cacheNote}。`);
     }
   } catch (err) {
     console.error(err);
     showError("解析或渲染失败：" + (err && err.message ? err.message : err));
+    els.exportBtn.disabled = false;
   }
 }
 
@@ -543,6 +622,12 @@ els.parseBtn.addEventListener("click", () => {
   run(text);
 });
 
+// 输入即解析：停止输入约 350ms 后自动解析并在后台预加载贴图（不自动渲染）
+els.input.addEventListener("input", () => {
+  clearError();
+  scheduleAutoParse(els.input.value, true);
+});
+
 els.file.addEventListener("change", async () => {
   const file = els.file.files && els.file.files[0];
   if (!file) return;
@@ -551,7 +636,8 @@ els.file.addEventListener("change", async () => {
     setStatus("正在读取文件…");
     const buf = new Uint8Array(await file.arrayBuffer());
     els.input.value = file.name.replace(/\.[^.]+$/, "") + "（已选择文件：" + file.name + "）";
-    await run(buf);
+    scheduleAutoParse(buf, false); // 后台预加载
+    await run(buf); // 文件选择后照旧直接渲染
   } catch (e) {
     showError("读取文件失败：" + e.message);
   }
@@ -578,6 +664,7 @@ els.drop.addEventListener("drop", async (e) => {
     setStatus("正在读取拖入文件…");
     const buf = new Uint8Array(await file.arrayBuffer());
     els.input.value = file.name.replace(/\.[^.]+$/, "") + "（已拖入文件：" + file.name + "）";
+    scheduleAutoParse(buf, false); // 后台预加载
     await run(buf);
   } catch (err) {
     showError("读取拖入文件失败：" + err.message);
@@ -681,9 +768,27 @@ els.exportBtn.addEventListener("click", () => {
   }, "image/png");
 });
 
+// 清除持久化缓存
+if (els.clearCache) {
+  els.clearCache.addEventListener("click", async (e) => {
+    e.preventDefault();
+    await clearPersistentCache();
+    setStatus("缓存已清除。");
+    setTimeout(() => {
+      if (els.status.textContent === "缓存已清除。") setStatus("");
+    }, 2000);
+  });
+}
+
 // 初始化
 (async function init() {
   await loadSpriteIndex();
   setIconIndex(spriteIndex);
+  // 回填上次输入并触发预加载（不自动渲染）
+  const last = readLastInput();
+  if (last) {
+    els.input.value = last;
+    scheduleAutoParse(last, false);
+  }
   setStatus("");
 })();

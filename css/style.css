@@ -421,6 +421,21 @@ footer p {
   margin: 0;
 }
 
+footer p + p {
+  margin-top: 6px;
+}
+
+.clear-cache {
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.clear-cache:hover {
+  color: var(--accent);
+}
+
 /* ---- tooltip ---- */
 #tip {
   position: fixed;

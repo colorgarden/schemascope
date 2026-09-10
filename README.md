@@ -22,6 +22,8 @@ web/
   js/render.js          渲染器（与 msch.py 像素级一致）
   js/icons.js           PUA 内容图标解析 + richText 富文本
   js/icons_data.js      PUA 码点表（由 icons.properties 生成）
+  js/prefetch.js        输入哈希 + 预加载管理器（可单测）
+  js/cache.js           Cache Storage 持久化缓存（SWR + TTL）
   js/app.js             UI 逻辑
   assets/fonts/icon.ttf UI emoji 字体（MindustryIcons）
   sprite_index.json     贴图名 → 相对路径索引（blocks/items/aux/all）
@@ -118,7 +120,29 @@ UI emoji → 去掉。
 > 素材均来自 Mindustry 仓库 / 发布包：`core/assets/icons/icons.properties`
 > 与 `core/assets/fonts/icon.ttf`（此处置于 `assets/fonts/`）。
 
-## 五、本地预览
+## 五、输入即解析与持久化缓存
+
+### 输入即解析 + 预加载
+- 在文本框 `input`、文件选择 `change`、拖拽 `drop` 三处加了 **350ms 防抖自动解析**：
+  停止输入后立即在后台解析并预加载贴图，状态栏显示「已解析：N 个方块，预加载贴图 done/total…」。
+- 预加载由 `js/prefetch.js` 的 `createPrefetchManager` 管理：按输入哈希复用已解析结果，
+  并带竞态保护（输入变化时丢弃旧任务结果）。点击「解析并渲染」时若哈希命中，
+  直接复用并 `await` 未完成的加载，通常近乎瞬时完成。
+- 贴图并发批量加载为 **16**。
+- 上次输入保存在 `localStorage.msch-last-input`（超过 300KB 不保存），
+  下次打开自动回填并触发预加载（**不自动渲染**）。
+
+### 持久化缓存（Cache Storage API）
+- `js/cache.js` 用 `caches.open("msch-cache-v1")` 缓存贴图与 `sprite_index.json`：
+  - **命中** → 立即用缓存 Response（blob→`createImageBitmap`），页面刷新后无需重新联网；
+  - **stale-while-revalidate**：缓存条目超过 **TTL 7 天**时，先返回缓存、后台 fetch 刷新；
+  - **未命中** → fetch → 成功后 `cache.put`。
+- 时间戳记录在 `localStorage.msch-cache-meta`。
+- 不可用时（非 https、无 `caches` API、隐私模式、`localStorage` 被禁）自动回退到普通
+  `fetch` + 会话内内存缓存，不报错。
+- 状态栏会显示「（缓存命中 X 张）」；页脚「清除缓存」可删除 `msch-cache-v1` 与时间戳。
+
+## 六、本地预览
 
 ```bash
 cd web
@@ -129,11 +153,11 @@ python3 -m http.server 8000
 直接双击 `index.html`（`file://`）也能打开界面，但浏览器会因同源策略拦截
 本地文件读取；请务必用上面的 `http.server` 方式预览。
 
-## 六、运行测试
+## 七、运行测试
 
 ```bash
 cd web
-node --check js/data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/app.js
+node --check js/data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/app.js
 node test/parse_test.mjs
 ```
 
@@ -143,12 +167,12 @@ node test/parse_test.mjs
 与 PUA 图标单测（`resolveIcon` 锚点、`richText`/`plainTextWithIcons`）。
 需要 Node 18+（内置 `DecompressionStream`）。
 
-## 七、浏览器要求
+## 八、浏览器要求
 
 依赖原生 `DecompressionStream('deflate')` 解压蓝图，需较新版本的
 Chrome / Edge / Safari / Firefox。若浏览器过旧，页面会给出明确中文提示。
 
-## 八、许可证
+## 九、许可证
 
 **MIT License**（详见根目录 [LICENSE](LICENSE) 文件）。
 

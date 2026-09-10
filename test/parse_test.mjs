@@ -23,6 +23,7 @@ import {
 } from "../js/render.js";
 import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN } from "../js/data.js";
 import { setIconIndex, resolveIcon, richText, plainTextWithIcons, ICON_FONT_LO } from "../js/icons.js";
+import { simpleHash, createPrefetchManager } from "../js/prefetch.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -311,6 +312,63 @@ function testIcons() {
 }
 
 // -----------------------------------------------------------------------------
+// 4. 预加载管理器（hash 复用 / 竞态保护）单测
+// -----------------------------------------------------------------------------
+async function testPrefetch() {
+  console.log("== 预加载管理器测试 ==");
+
+  // hash 确定性 & 字符串/字节一致
+  check("simpleHash 确定性", simpleHash("abc") === simpleHash("abc"));
+  check("simpleHash 区分输入", simpleHash("abc") !== simpleHash("abd"));
+  check(
+    "simpleHash 字符串=同内容字节",
+    simpleHash("abc") === simpleHash(new Uint8Array([97, 98, 99]))
+  );
+
+  // 复用：同输入只 parse 一次、load 一次
+  let parseCount = 0;
+  let loadCount = 0;
+  const mgr = createPrefetchManager(
+    async (i) => {
+      parseCount++;
+      return { name: i };
+    },
+    async () => {
+      loadCount++;
+    }
+  );
+  const r1 = await mgr.ensure("same");
+  await r1.promise;
+  const r2 = await mgr.ensure("same");
+  await r2.promise;
+  check("复用 schem 且只 parse 一次", parseCount === 1, `parseCount=${parseCount}`);
+  check("复用 schem 且只 load 一次", loadCount === 1, `loadCount=${loadCount}`);
+  check("复用标记 reused=true", r2.reused === true);
+  check("复用完成标记 done=true", r2.done === true);
+  check("复用返回同一 schem 对象", r2.schem === r1.schem);
+
+  // 竞态：A 尚未解析完就发起 B，A 结果应被丢弃，load 只为 B 调用
+  const calls = { load: [] };
+  const resolvers = {};
+  const mgr2 = createPrefetchManager(
+    (input) => new Promise((res) => (resolvers[input] = res)),
+    async (schem) => {
+      calls.load.push(schem.name);
+    }
+  );
+  const pA = mgr2.ensure("A");
+  const pB = mgr2.ensure("B");
+  resolvers["A"]({ name: "A" });
+  resolvers["B"]({ name: "B" });
+  const [rA, rB] = await Promise.all([pA, pB]);
+  await rB.promise;
+  check("旧输入 A 返回 race=true", rA.race === true && rA.schem === null, JSON.stringify(rA && { race: rA.race }));
+  check("新输入 B 正常解析", !!rB.schem && rB.schem.name === "B");
+  check("load 只为最新输入 B 调用", calls.load.length === 1 && calls.load[0] === "B", JSON.stringify(calls.load));
+  check("current 指向最新 B", mgr2.current.key === simpleHash("B"));
+}
+
+// -----------------------------------------------------------------------------
 // 入口
 // -----------------------------------------------------------------------------
 async function main() {
@@ -324,6 +382,7 @@ async function main() {
   globalThis.__SCHEM = await parseSchematic(fs.readFileSync(IN_TXT, "utf8"));
   testRenderUnits();
   testIcons();
+  await testPrefetch();
 
   console.log("");
   console.log(`结果：PASS ${pass}，FAIL ${fail}`);
