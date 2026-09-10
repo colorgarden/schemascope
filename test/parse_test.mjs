@@ -269,6 +269,72 @@ function testRenderUnits() {
   check("渲染缓冲长度一致", res.rgba.length === res.width * res.height * 4);
 }
 
+// -----------------------------------------------------------------------------
+// 透明度参数（电线 laserAlpha / 桥 bridgeOpacity）
+// -----------------------------------------------------------------------------
+function testOpacity() {
+  console.log("== 透明度参数测试 ==");
+  const W = TILE;
+  const base = new Uint8ClampedArray(W * W * 4).fill(255);
+  const mk = () => ({ w: W, h: W, size: 1, rgba: new Uint8ClampedArray(base), placeholder: false });
+  const sprites = {
+    "power-node": mk(),
+    battery: mk(),
+    "bridge-conduit": mk(),
+    laser: mk(),
+    "laser-end": mk(),
+    "bridge-conduit-bridge": mk(),
+    "bridge-conduit-arrow": mk(),
+  };
+  const schem = {
+    width: 5,
+    height: 3,
+    tiles: [
+      { block: "power-node", x: 0, y: 0, rot: 0, config_type: "point2Array", config: [[2, 0]] },
+      { block: "battery", x: 2, y: 0, rot: 0, config_type: "null", config: null },
+      { block: "bridge-conduit", x: 0, y: 2, rot: 0, config_type: "null", config: null },
+      { block: "bridge-conduit", x: 4, y: 2, rot: 0, config_type: "null", config: null },
+    ],
+  };
+  const opt = (o) => renderSchematic(schem, sprites, Object.assign({ scale: 1, pad: 0, transparent: true, grid: false }, o));
+  const cw = 5 * TILE; // 160
+
+  // 电线：power-node(0,0) → battery(2,0)，同 y=0 → 内容 py=64，中心 y=80
+  const rL1 = opt({ laserAlpha: 1, bridgeOpacity: 0.5 });
+  const rL0 = opt({ laserAlpha: 0, bridgeOpacity: 0.5 });
+  const lx = (80 * cw + 48) * 4;
+  check(
+    "laserAlpha=1 光束可见 / =0 不可见",
+    rL1.rgba[lx] > 200 && rL0.rgba[lx + 3] === 0,
+    `r1=${rL1.rgba[lx]} a0=${rL0.rgba[lx + 3]}`
+  );
+
+  // 桥：bridge-conduit(0,2)-(4,2)，同 y=2 → 内容 py=0，中心 y=16
+  const rB1 = opt({ laserAlpha: 1, bridgeOpacity: 1 });
+  const rB02 = opt({ laserAlpha: 1, bridgeOpacity: 0.2 });
+  const bx = (16 * cw + 80) * 4;
+  // 注：内容层最终 alpha 会被 padAndScale 置为 255，透明度体现在 RGB 亮度
+  check(
+    "bridgeOpacity=1 与 0.2 桥带差异显著",
+    rB1.rgba[bx] > 200 && rB02.rgba[bx] > 0 && rB1.rgba[bx] - rB02.rgba[bx] > 100,
+    `r1=${rB1.rgba[bx]} r02=${rB02.rgba[bx]}`
+  );
+
+  // 回归：不传参 = 显式常量默认值（laserAlpha=1, bridgeOpacity=0.5）
+  const rDefault = opt({});
+  const rExplicit = opt({ laserAlpha: 1, bridgeOpacity: 0.5 });
+  let same = rDefault.rgba.length === rExplicit.rgba.length;
+  if (same) {
+    for (let i = 0; i < rDefault.rgba.length; i++) {
+      if (rDefault.rgba[i] !== rExplicit.rgba[i]) {
+        same = false;
+        break;
+      }
+    }
+  }
+  check("不传参 = 传入常量默认值（回归）", same);
+}
+
 function testBridgePairs() {
   const schem = globalThis.__SCHEM;
   // 用 size=1 的占位贴图构造布局，仅验证配对逻辑
@@ -877,6 +943,7 @@ async function main() {
   globalThis.__EXP_TILES = JSON.parse(fs.readFileSync(IN_JSON, "utf8")).tiles;
   globalThis.__SCHEM = await parseSchematic(fs.readFileSync(IN_TXT, "utf8"));
   testRenderUnits();
+  testOpacity();
   testIcons();
   await testPrefetch();
   testRequirements();

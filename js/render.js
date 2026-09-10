@@ -555,8 +555,8 @@ export function drawCenterConfig(buf, cw, ch, tile, cx, cy, sprites) {
   }
 }
 
-/** 一根电力节点激光（对应 _draw_node_laser）。 */
-export function drawNodeLaser(buf, cw, ch, x1, y1, size1, x2, y2, size2, sprites) {
+/** 一根电力节点激光（对应 _draw_node_laser）。alphaScale 可覆盖默认透明度。 */
+export function drawNodeLaser(buf, cw, ch, x1, y1, size1, x2, y2, size2, sprites, alphaScale = POWER_LASER_ALPHA) {
   const dx = x2 - x1;
   const dy = y2 - y1;
   const length = Math.hypot(dx, dy);
@@ -578,17 +578,17 @@ export function drawNodeLaser(buf, cw, ch, x1, y1, size1, x2, y2, size2, sprites
 
   const beam = getSprite(sprites, "laser", true);
   if (beam) {
-    drawBeam(buf, cw, ch, l1x, l1y, l2x, l2y, beam.rgba, beam.w, beam.h, POWER_LASER_WIDTH, color, POWER_LASER_ALPHA);
+    drawBeam(buf, cw, ch, l1x, l1y, l2x, l2y, beam.rgba, beam.w, beam.h, POWER_LASER_WIDTH, color, alphaScale);
   }
   const end = getSprite(sprites, "laser-end", true);
   if (end) {
-    blitRotated(buf, cw, ch, end.rgba, end.w, end.h, e1x, e1y, POWER_LASER_SCALE, ang + 180, color, POWER_LASER_ALPHA);
-    blitRotated(buf, cw, ch, end.rgba, end.w, end.h, e2x, e2y, POWER_LASER_SCALE, ang, color, POWER_LASER_ALPHA);
+    blitRotated(buf, cw, ch, end.rgba, end.w, end.h, e1x, e1y, POWER_LASER_SCALE, ang + 180, color, alphaScale);
+    blitRotated(buf, cw, ch, end.rgba, end.w, end.h, e2x, e2y, POWER_LASER_SCALE, ang, color, alphaScale);
   }
 }
 
-/** 第二遍：所有电力节点连线激光（对应 _draw_power_lasers）。 */
-export function drawPowerLasers(buf, cw, ch, layout, sprites) {
+/** 第二遍：所有电力节点连线激光（对应 _draw_power_lasers）。laserAlpha 可覆盖默认透明度。 */
+export function drawPowerLasers(buf, cw, ch, layout, sprites, laserAlpha = POWER_LASER_ALPHA) {
   const lookup = new Map();
   for (const e of layout.entries) lookup.set(`${e.tile.x},${e.tile.y}`, e);
 
@@ -607,7 +607,7 @@ export function drawPowerLasers(buf, cw, ch, layout, sprites) {
       if (!(POWER_BLOCKS.has(te.tile.block) || MOD_POWER_BLOCKS.has(te.tile.block))) continue;
       const tx = te.px + (te.size * TILE) / 2.0;
       const ty = te.py + (te.size * TILE) / 2.0;
-      drawNodeLaser(buf, cw, ch, sx, sy, e.size, tx, ty, te.size, sprites);
+      drawNodeLaser(buf, cw, ch, sx, sy, e.size, tx, ty, te.size, sprites, laserAlpha);
     }
   }
 }
@@ -684,8 +684,8 @@ export function bridgePairs(entries) {
   return pairs;
 }
 
-/** 第二遍：桥连接（对应 _draw_bridges）。 */
-export function drawBridges(buf, cw, ch, layout, sprites) {
+/** 第二遍：桥连接（对应 _draw_bridges）。bridgeOpacity 可覆盖默认透明度。 */
+export function drawBridges(buf, cw, ch, layout, sprites, bridgeOpacity = BRIDGE_OPACITY) {
   for (const [e, te] of bridgePairs(layout.entries)) {
     const sorted = [e, te].sort((p, q) => p.tile.x - q.tile.x || p.tile.y - q.tile.y);
     const a = sorted[0];
@@ -707,12 +707,12 @@ export function drawBridges(buf, cw, ch, layout, sprites) {
 
     const body = getSprite(sprites, a.tile.block + "-bridge", true);
     if (body) {
-      drawBeam(buf, cw, ch, l1x, l1y, l2x, l2y, body.rgba, body.w, body.h, bridgeWidthOf(a.tile.block), [255, 255, 255], BRIDGE_OPACITY);
+      drawBeam(buf, cw, ch, l1x, l1y, l2x, l2y, body.rgba, body.w, body.h, bridgeWidthOf(a.tile.block), [255, 255, 255], bridgeOpacity);
     }
     const arrow = getSprite(sprites, a.tile.block + "-arrow", true);
     if (arrow) {
       const ang = (180 / Math.PI) * Math.atan2(dy, dx);
-      blitRotated(buf, cw, ch, arrow.rgba, arrow.w, arrow.h, (ax + bx) / 2.0, (ay + by) / 2.0, 1.0, ang, [255, 255, 255], BRIDGE_OPACITY);
+      blitRotated(buf, cw, ch, arrow.rgba, arrow.w, arrow.h, (ax + bx) / 2.0, (ay + by) / 2.0, 1.0, ang, [255, 255, 255], bridgeOpacity);
     }
   }
 }
@@ -724,7 +724,8 @@ export function drawBridges(buf, cw, ch, layout, sprites) {
 /**
  * 渲染蓝图，返回 { width, height, rgba, layout }（对应 render_schematic）。
  * opts: { scale=2, pad=16, transparent=false, grid=false,
- *         layers=true, config_icons=true, lasers=true }
+ *         layers=true, config_icons=true, lasers=true,
+ *         laserAlpha=POWER_LASER_ALPHA, bridgeOpacity=BRIDGE_OPACITY }
  */
 export function renderSchematic(schem, sprites, opts = {}) {
   const scale = opts.scale !== undefined ? opts.scale : 2;
@@ -734,6 +735,8 @@ export function renderSchematic(schem, sprites, opts = {}) {
   const layers = opts.layers !== undefined ? opts.layers : true;
   const configIcons = opts.config_icons !== undefined ? opts.config_icons : true;
   const lasers = opts.lasers !== undefined ? opts.lasers : true;
+  const laserAlpha = opts.laserAlpha !== undefined ? opts.laserAlpha : POWER_LASER_ALPHA;
+  const bridgeOpacity = opts.bridgeOpacity !== undefined ? opts.bridgeOpacity : BRIDGE_OPACITY;
 
   const layout = computeLayout(schem, sprites);
   const cw = layout.cols * TILE;
@@ -775,8 +778,8 @@ export function renderSchematic(schem, sprites, opts = {}) {
 
   // ---- 第二遍：桥连接 + 电力节点激光 ----
   if (lasers) {
-    drawBridges(buf, cw, ch, layout, sprites);
-    drawPowerLasers(buf, cw, ch, layout, sprites);
+    drawBridges(buf, cw, ch, layout, sprites, bridgeOpacity);
+    drawPowerLasers(buf, cw, ch, layout, sprites, laserAlpha);
   }
 
   const bgtex = transparent ? null : getSprite(sprites, "schematic-background", true);

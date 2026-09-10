@@ -35,6 +35,10 @@ const els = {
   scale: $("scale"),
   bgMode: $("bg-mode"),
   grid: $("grid"),
+  laserRange: $("laser-alpha"),
+  laserVal: $("laser-alpha-val"),
+  bridgeRange: $("bridge-opacity"),
+  bridgeVal: $("bridge-opacity-val"),
   status: $("status"),
   error: $("error"),
   procs: $("procs"),
@@ -81,7 +85,7 @@ const spriteCache = new Map(); // name -> sprite | null
 let localBaseOk = null; // 推断 assets/sprites/ 是否存在，避免满屏 404
 let current = null; // { schem, tiles, layout, name }
 let currentText = "";
-let renderOpts = { scale: DEFAULT_SCALE, pad: DEFAULT_PAD, transparent: false, grid: false };
+let renderOpts = { scale: DEFAULT_SCALE, pad: DEFAULT_PAD, transparent: false, grid: false, laserAlpha: 1, bridgeOpacity: 0.5 };
 
 // ---- 模组状态 ----
 let mods = []; // 已加载模组（parseMod 结果）
@@ -612,6 +616,8 @@ function renderToCanvas(schem) {
     pad: DEFAULT_PAD,
     transparent: renderOpts.transparent,
     grid: renderOpts.grid,
+    laserAlpha: renderOpts.laserAlpha,
+    bridgeOpacity: renderOpts.bridgeOpacity,
   });
   const canvas = els.canvas;
   canvas.width = result.width;
@@ -1288,26 +1294,81 @@ if (els.sourceBadges) {
 }
 
 // 渲染选项
+const OPACITY_KEYS = { laser: "msch-laser-alpha", bridge: "msch-bridge-opacity" };
+
+function readOpacityOpts() {
+  const la = Math.max(0, Math.min(100, parseInt(els.laserRange.value, 10)));
+  const bo = Math.max(0, Math.min(100, parseInt(els.bridgeRange.value, 10)));
+  const lv = Number.isFinite(la) ? la : 100;
+  const bv = Number.isFinite(bo) ? bo : 50;
+  renderOpts.laserAlpha = lv / 100;
+  renderOpts.bridgeOpacity = bv / 100;
+  els.laserVal.textContent = lv + "%";
+  els.bridgeVal.textContent = bv + "%";
+}
+
+function saveOpacityOpts() {
+  try {
+    localStorage.setItem(OPACITY_KEYS.laser, String(Math.round(renderOpts.laserAlpha * 100)));
+    localStorage.setItem(OPACITY_KEYS.bridge, String(Math.round(renderOpts.bridgeOpacity * 100)));
+  } catch (e) {
+    // localStorage 不可用：忽略
+  }
+}
+
+function loadOpacityOpts() {
+  let la = 100;
+  let bo = 50;
+  try {
+    const s1 = localStorage.getItem(OPACITY_KEYS.laser);
+    const s2 = localStorage.getItem(OPACITY_KEYS.bridge);
+    if (s1 !== null) la = Math.max(0, Math.min(100, parseInt(s1, 10) || 0));
+    if (s2 !== null) bo = Math.max(0, Math.min(100, parseInt(s2, 10) || 0));
+  } catch (e) {
+    // 忽略
+  }
+  els.laserRange.value = String(la);
+  els.bridgeRange.value = String(bo);
+  readOpacityOpts();
+}
+
 function readOpts() {
   renderOpts.scale = Math.max(1, Math.min(4, parseInt(els.scale.value, 10) || DEFAULT_SCALE));
   renderOpts.transparent = els.bgMode.value === "transparent";
   renderOpts.grid = els.grid.checked;
+  readOpacityOpts();
 }
+
+/** 用当前选项重绘已渲染的蓝图（热区按百分比，尺寸不变）。 */
+function quickRerender() {
+  if (!current) return;
+  try {
+    const result = renderToCanvas(current.schem);
+    current.layout = result.layout;
+    buildHotspots(current.schem, result.layout, current.tiles);
+  } catch (e) {
+    showError("重新渲染失败：" + e.message);
+  }
+}
+
 [els.scale, els.bgMode, els.grid].forEach((el) =>
   el.addEventListener("change", () => {
     readOpts();
-    if (current) {
-      try {
-        const result = renderToCanvas(current.schem);
-        current.layout = result.layout;
-        // 热区基于百分比定位，尺寸不变；仍重建以保持 kind 状态
-        buildHotspots(current.schem, result.layout, current.tiles);
-      } catch (e) {
-        showError("重新渲染失败：" + e.message);
-      }
-    }
+    quickRerender();
   })
 );
+
+// 透明度滑杆：250ms 防抖实时重渲染 + 持久化
+let opacityTimer = null;
+function onOpacityInput() {
+  readOpacityOpts();
+  saveOpacityOpts();
+  clearTimeout(opacityTimer);
+  opacityTimer = setTimeout(quickRerender, 250);
+}
+[els.laserRange, els.bridgeRange].forEach((el) => {
+  if (el) el.addEventListener("input", onOpacityInput);
+});
 
 // 弹窗与复制
 els.modalX.addEventListener("click", closeModal);
@@ -1412,6 +1473,7 @@ if (els.clearCache) {
   populateSourceSelect();
   markActiveBadge(getChoiceKey());
   updateSourceCurrent();
+  loadOpacityOpts();
   await loadCachedMods();
   // 回填上次输入并触发预加载（不自动渲染）
   const last = readLastInput();

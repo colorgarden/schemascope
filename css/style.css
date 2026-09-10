@@ -244,6 +244,33 @@ h1 .sub {
   accent-color: var(--accent);
 }
 
+/* ---- 透明度滑杆 ---- */
+.opacity-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin-top: 12px;
+}
+
+.range-ctl {
+  gap: 8px;
+}
+
+.range-ctl input[type="range"] {
+  width: 136px;
+  height: 4px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.range-val {
+  color: var(--text);
+  font-size: 12.5px;
+  min-width: 40px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---- 贴图源选择 ---- */
 .source-row {
   display: flex;
