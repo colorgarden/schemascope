@@ -13,7 +13,7 @@ import {
   DEFAULT_SCALE,
   DEFAULT_PAD,
 } from "./data.js";
-import { parseSchematic, extractLogic, isProcessor } from "./parser.js";
+import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js";
 import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js";
 import { setIconIndex, richText, plainTextWithIcons, itemIconSrc } from "./icons.js";
 import { simpleHash, createPrefetchManager } from "./prefetch.js";
@@ -26,7 +26,7 @@ import { blockDisplayName as resolveBlockDisplayName } from "./names.js";
 import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260910e";
+const APP_VERSION = "20260910f";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -1311,9 +1311,11 @@ els.file.addEventListener("change", async () => {
   try {
     setStatus("正在读取文件…");
     const buf = new Uint8Array(await file.arrayBuffer());
-    els.input.value = file.name.replace(/\.[^.]+$/, "") + "（已选择文件：" + file.name + "）";
-    scheduleAutoParse(buf); // 后台预加载
-    await run(buf); // 文件选择后照旧直接渲染
+    const text = isTextBlueprint(buf) ? new TextDecoder("utf-8").decode(buf).trim() : bytesToBase64(buf);
+    els.input.value = text;
+    setStatus(`已读取文件：${file.name}（${buf.length} 字节）`);
+    scheduleAutoParse(text); // 后台预加载
+    await run(text);
   } catch (e) {
     showError("读取文件失败：" + e.message);
   }
@@ -1339,9 +1341,11 @@ els.drop.addEventListener("drop", async (e) => {
   try {
     setStatus("正在读取拖入文件…");
     const buf = new Uint8Array(await file.arrayBuffer());
-    els.input.value = file.name.replace(/\.[^.]+$/, "") + "（已拖入文件：" + file.name + "）";
-    scheduleAutoParse(buf); // 后台预加载
-    await run(buf);
+    const text = isTextBlueprint(buf) ? new TextDecoder("utf-8").decode(buf).trim() : bytesToBase64(buf);
+    els.input.value = text;
+    setStatus(`已读取文件：${file.name}（${buf.length} 字节）`);
+    scheduleAutoParse(text); // 后台预加载
+    await run(text);
   } catch (err) {
     showError("读取拖入文件失败：" + err.message);
   }

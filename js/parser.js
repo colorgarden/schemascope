@@ -317,6 +317,42 @@ function base64ToBytes(text) {
   throw new Error("当前环境不支持 Base64 解码。");
 }
 
+/**
+ * 字节 → Base64 文本。浏览器分块 btoa（32KB/块，避免调用栈溢出）；Node 用 Buffer 兜底。
+ */
+export function bytesToBase64(bytes) {
+  const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (typeof btoa === "function") {
+    const CHUNK = 0x8000; // 32KB
+    let bin = "";
+    for (let i = 0; i < buf.length; i += CHUNK) {
+      bin += String.fromCharCode.apply(null, buf.subarray(i, i + CHUNK));
+    }
+    return btoa(bin);
+  }
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength).toString("base64");
+  }
+  throw new Error("当前环境不支持 Base64 编码。");
+}
+
+/**
+ * 判定是否为「文本型蓝图」：UTF-8 解码后全为可打印 Base64/空白字符，非空，
+ * 且 trim 后以 `bXNja` 开头。二进制 .msch 会因 magic 为 "msch" 或含不可打印字节而返回 false。
+ */
+export function isTextBlueprint(bytes) {
+  const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (!buf.length) return false;
+  let text;
+  try {
+    text = _utf8Decoder.decode(buf);
+  } catch (e) {
+    return false;
+  }
+  if (!/^[A-Za-z0-9+/=\s]*$/.test(text)) return false;
+  return text.trim().startsWith("bXNja");
+}
+
 function stringToBytes(str) {
   // 只用于把「以 msch 开头的原始字符串」转字节（正常二进制走 Uint8Array 分支）
   const out = new Uint8Array(str.length);

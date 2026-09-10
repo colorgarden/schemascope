@@ -208,6 +208,14 @@ UI emoji → 去掉。
 - 打开页面时输入框为空（**不再自动缓存/回填蓝图本体**；旧键 `msch-last-input` 会在启动时清理）。
   输入、选择文件、拖拽、点击历史条目均会触发预加载。
 
+### 文件加载行为
+- 选择 / 拖入 `.txt` / `.msch` 后，输入框会**填入文件内容本身**（而非文件名占位文本）：
+  - 文本型（解码后全为 Base64/空白且以 `bXNja` 开头）→ 直接填入原文（trim）；
+  - 二进制 `.msch` → 用 `bytesToBase64()` 转成 Base64 文本填入。
+- 状态栏显示「已读取文件：<文件名>（N 字节）」；随后自动解析渲染。
+- 由于输入框此时就是可再次解析的字符串，**「解析并渲染」可重复点击**，且文件加载同样会写入
+  历史记录（不再出现「选文件后无历史」的问题）。
+
 ### 本地历史记录
 - 解析+渲染成功后写入 `localStorage.msch-history`（JSON 数组，新→旧），条目：
   `{ hash, name, w, h, tiles, time, input }`（`hash` 为输入哈希，`input` 为原始文本）。
@@ -288,7 +296,7 @@ python3 -m http.server 8000
 
 ```bash
 cd web
-node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/history.js js/main.20260910e.js
+node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/history.js js/main.20260910f.js
 node test/parse_test.mjs
 ```
 

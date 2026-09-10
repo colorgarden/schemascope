@@ -8,9 +8,10 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 
-import { parseSchematic, extractLogic, isProcessor } from "../js/parser.js";
+import { parseSchematic, extractLogic, isProcessor, bytesToBase64, isTextBlueprint } from "../js/parser.js";
 import {
   computeLayout,
   tileFootprint,
@@ -1009,7 +1010,41 @@ function testHistory() {
 }
 
 // -----------------------------------------------------------------------------
-// 8. 镜像源切换 / 超时 / 缓存（注入 mock fetch 与 mock Cache Storage）
+// 8. 文件输入：bytesToBase64 / isTextBlueprint
+// -----------------------------------------------------------------------------
+async function testFileInput() {
+  console.log("== 文件输入测试 ==");
+  for (const n of [0, 1, 32768, 100000]) {
+    const a = new Uint8Array(n);
+    for (let i = 0; i < n; i++) a[i] = (i * 31 + 7) & 255;
+    const b64 = bytesToBase64(a);
+    const back = new Uint8Array(Buffer.from(b64, "base64"));
+    let same = back.length === n;
+    if (same) for (let i = 0; i < n; i++) if (back[i] !== a[i]) { same = false; break; }
+    check(`bytesToBase64 往返 n=${n}`, same, `len=${back.length}`);
+  }
+
+  const enc = (s) => new TextEncoder().encode(s);
+  check("isTextBlueprint：bXNja 文本", isTextBlueprint(enc("bXNjaAF4nGPg")));
+  check("isTextBlueprint：带换行/空白", isTextBlueprint(enc("  bXNjaAF4nGPg\n\t")));
+  check("isTextBlueprint：msch 二进制 false", !isTextBlueprint(new Uint8Array([0x6d, 0x73, 0x63, 0x68, 1, 2, 3])));
+  check("isTextBlueprint：随机字节 false", !isTextBlueprint(new Uint8Array([0x12, 0x9a, 0xff, 0x00])));
+  check("isTextBlueprint：空 false", !isTextBlueprint(new Uint8Array(0)));
+
+  // 回归：构造 v1 容器（msch + version=1 + zlib 体）→ base64 → parseSchematic
+  const bodyBytes = Buffer.from([0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+  const container = Buffer.concat([Buffer.from([0x6d, 0x73, 0x63, 0x68, 0x01]), zlib.deflateSync(bodyBytes)]);
+  const b64 = bytesToBase64(new Uint8Array(container));
+  const schem = await parseSchematic(b64);
+  check(
+    "v1 容器 base64（bytesToBase64）可被 parseSchematic 解析",
+    schem.version === 1 && schem.width === 1 && schem.height === 1 && schem.total === 0,
+    `v=${schem.version} ${schem.width}x${schem.height} total=${schem.total}`
+  );
+}
+
+// -----------------------------------------------------------------------------
+// 9. 镜像源切换 / 超时 / 缓存（注入 mock fetch 与 mock Cache Storage）
 // -----------------------------------------------------------------------------
 async function testNet() {
   console.log("== 镜像源 / 缓存测试 ==");
@@ -1251,6 +1286,7 @@ async function main() {
   testGeneric();
   testCnAndFrames();
   testHistory();
+  await testFileInput();
   await testNet();
 
   console.log("");
