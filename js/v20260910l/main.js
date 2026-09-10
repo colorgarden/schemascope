@@ -12,6 +12,7 @@ import {
   BRIDGE_BLOCKS,
   DEFAULT_SCALE,
   DEFAULT_PAD,
+  configSpriteNames,
 } from "./data.js";
 import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js";
 import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js";
@@ -26,7 +27,7 @@ import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resol
 import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260910k";
+const APP_VERSION = "20260910l";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -518,8 +519,9 @@ function collectNeeded(schem) {
       add(t.block + "-bridge", false);
       add(t.block + "-arrow", false);
     }
+    for (const n of configSpriteNames(t.block)) add(n, false);
   }
-  for (const n of ["center", "cross", "laser", "laser-end", "schematic-background"]) add(n, false);
+  for (const n of ["center", "cross", "cross-full", "laser", "laser-end", "schematic-background"]) add(n, false);
   return needed;
 }
 

@@ -278,6 +278,21 @@ export const CONFIG_OVERLAY = {
   "liquid-source": "liquidSource",
 };
 
+/**
+ * 某方块「配置影响贴图」所需的额外贴图名（供预加载收集；渲染侧读取同名贴图）。
+ * - underlay("item")：cross-full（空配置画十字）
+ * - overlay("centerTint")：<block>-center（乘内容色）
+ * - overlay("liquidSource")：source-bottom → 空配置 cross / 有液体 fluid
+ */
+export function configSpriteNames(block) {
+  const out = [];
+  if (CONFIG_UNDERLAY[block]) out.push("cross-full");
+  const ov = CONFIG_OVERLAY[block];
+  if (ov === "centerTint") out.push(block + "-center");
+  else if (ov === "liquidSource") out.push("source-bottom", "fluid");
+  return out;
+}
+
 // 内容名 → 颜色（物品/液体，取自 Mindustry v159.7 Items.java / Liquids.java）。未知内容回退白色。
 export const CONTENT_COLORS = {
   // 物品

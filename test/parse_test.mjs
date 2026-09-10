@@ -11,7 +11,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 
-import { parseSchematic, extractLogic, isProcessor, bytesToBase64, isTextBlueprint, parseContentMap, FALLBACK_BLOCKS, LEGACY_BLOCKS } from "../js/v20260910k/parser.js";
+import { parseSchematic, extractLogic, isProcessor, bytesToBase64, isTextBlueprint, parseContentMap, FALLBACK_BLOCKS, LEGACY_BLOCKS } from "../js/v20260910l/parser.js";
 import {
   computeLayout,
   tileFootprint,
@@ -34,17 +34,17 @@ import {
   setModPowerNodes,
   setModLayers,
   nodeLaserOpts,
-} from "../js/v20260910k/render.js";
-import { blockDisplayName, modNameCandidates, spriteDisplayName } from "../js/v20260910k/names.js";
-import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN, CONTENT_COLORS, CONFIG_UNDERLAY, CONFIG_OVERLAY } from "../js/v20260910k/data.js";
-import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, ICON_FONT_LO } from "../js/v20260910k/icons.js";
-import { ICON_BY_CODE, ICON_LOCAL_CODES } from "../js/v20260910k/icons_data.js";
-import { simpleHash, createPrefetchManager } from "../js/v20260910k/prefetch.js";
-import { computeRequirements, requirementsList } from "../js/v20260910k/requirements.js";
-import { BLOCK_REQUIREMENTS } from "../js/v20260910k/requirements_data.js";
-import { openZip } from "../js/v20260910k/zip.js";
-import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers, looseJson, parseRequirements } from "../js/v20260910k/mod.js";
-import { CN_BLOCKS } from "../js/v20260910k/cn_data.js";
+} from "../js/v20260910l/render.js";
+import { blockDisplayName, modNameCandidates, spriteDisplayName } from "../js/v20260910l/names.js";
+import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN, CONTENT_COLORS, CONFIG_UNDERLAY, CONFIG_OVERLAY, configSpriteNames } from "../js/v20260910l/data.js";
+import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, ICON_FONT_LO } from "../js/v20260910l/icons.js";
+import { ICON_BY_CODE, ICON_LOCAL_CODES } from "../js/v20260910l/icons_data.js";
+import { simpleHash, createPrefetchManager } from "../js/v20260910l/prefetch.js";
+import { computeRequirements, requirementsList } from "../js/v20260910l/requirements.js";
+import { BLOCK_REQUIREMENTS } from "../js/v20260910l/requirements_data.js";
+import { openZip } from "../js/v20260910l/zip.js";
+import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers, looseJson, parseRequirements } from "../js/v20260910l/mod.js";
+import { CN_BLOCKS } from "../js/v20260910l/cn_data.js";
 import {
   HISTORY_KEY,
   HISTORY_MAX_ITEMS,
@@ -55,7 +55,7 @@ import {
   saveHistory,
   loadHistory,
   formatRelativeTime,
-} from "../js/v20260910k/history.js";
+} from "../js/v20260910l/history.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1086,6 +1086,19 @@ async function testFileInput() {
 function testConfigRender() {
   console.log("== 配置贴图渲染测试 ==");
 
+  // configSpriteNames：预加载收集（修复「装卸器没效果」——配置贴图未下载）
+  check("configSpriteNames(unloader)", JSON.stringify(configSpriteNames("unloader")) === JSON.stringify(["unloader-center"]), JSON.stringify(configSpriteNames("unloader")));
+  check("configSpriteNames(duct-unloader)", JSON.stringify(configSpriteNames("duct-unloader")) === JSON.stringify(["duct-unloader-center"]), JSON.stringify(configSpriteNames("duct-unloader")));
+  check("configSpriteNames(sorter)", JSON.stringify(configSpriteNames("sorter")) === JSON.stringify(["cross-full"]), JSON.stringify(configSpriteNames("sorter")));
+  check("configSpriteNames(liquid-source)", JSON.stringify(configSpriteNames("liquid-source")) === JSON.stringify(["source-bottom", "fluid"]), JSON.stringify(configSpriteNames("liquid-source")));
+  check("configSpriteNames(kiln)=[]", JSON.stringify(configSpriteNames("kiln")) === "[]", JSON.stringify(configSpriteNames("kiln")));
+  {
+    const idx = JSON.parse(fs.readFileSync(new URL("../sprite_index.json", import.meta.url), "utf8"));
+    check("aux 含 unloader-center", !!idx.aux["unloader-center"], idx.aux["unloader-center"]);
+    check("duct-unloader-center 路径以 distribution/ducts 结尾", /distribution\/ducts\/duct-unloader-center\.png$/.test(idx.aux["duct-unloader-center"] || ""), idx.aux["duct-unloader-center"]);
+    check("aux 含 cross-full/fluid/source-bottom", !!(idx.aux["cross-full"] && idx.aux["fluid"] && idx.aux["source-bottom"]), JSON.stringify({ c: idx.aux["cross-full"], f: idx.aux["fluid"], s: idx.aux["source-bottom"] }));
+  }
+
   // fillRect
   const fb = new Uint8ClampedArray(4 * 4 * 4);
   fillRect(fb, 4, 4, 1, 1, 2, 2, [10, 20, 30, 255]);
@@ -1477,8 +1490,8 @@ async function testNet() {
   });
 
   try {
-    const { fetchMindustry, resetProbe, SOURCES, DEFAULT_SOURCES, SOURCE_DEFS, getSourceOrder, setChoiceKey, probeAllSources } = await import("../js/v20260910k/sources.js");
-    const { fetchMindustryCached, spriteCacheKey, resetCacheInfo } = await import("../js/v20260910k/cache.js");
+    const { fetchMindustry, resetProbe, SOURCES, DEFAULT_SOURCES, SOURCE_DEFS, getSourceOrder, setChoiceKey, probeAllSources } = await import("../js/v20260910l/sources.js");
+    const { fetchMindustryCached, spriteCacheKey, resetCacheInfo } = await import("../js/v20260910l/cache.js");
     const A = SOURCES[0];
     const B = SOURCES[1];
     const C = SOURCES[2];
