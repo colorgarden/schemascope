@@ -611,7 +611,12 @@ function drawBlockSpriteLayers(buf, cw, ch, t, e, sprites, layers) {
   const cy = e.py + Math.floor((e.size * TILE) / 2);
   const names = layers ? LAYERS[t.block] || MOD_LAYERS[t.block] || [t.block] : [t.block];
   for (let li = 0; li < names.length; li++) {
-    const lname = names[li];
+    const item = names[li];
+    const lname = typeof item === "string" ? item : item && item.name;
+    if (!lname) continue;
+    const dx = typeof item === "object" && item.dx ? item.dx : 0;
+    const dy = typeof item === "object" && item.dy ? item.dy : 0;
+    const lrot = typeof item === "object" && item.rot ? item.rot : 0;
     const optional = lname !== t.block;
     const sp = getSprite(sprites, lname, optional);
     if (!sp) continue;
@@ -624,8 +629,13 @@ function drawBlockSpriteLayers(buf, cw, ch, t, e, sprites, layers) {
       const [ocol, orad] = outline;
       rgba = makeOutline(rgba, sw, sh, ocol, orad);
     }
-    const [rw, rh, rrgba] = rotateSprite(rgba, sw, sh, t.rot);
-    blend(buf, cw, ch, cx - Math.floor(rw / 2), cy - Math.floor(rh / 2), rrgba, rw, rh);
+    if (lrot) {
+      // 任意角度（度）绕中心旋转绘制（对应 DrawRegion 的 rotation）
+      blitRotated(buf, cw, ch, rgba, sw, sh, cx + dx, cy + dy, 1.0, lrot, [255, 255, 255], 1.0);
+    } else {
+      const [rw, rh, rrgba] = rotateSprite(rgba, sw, sh, t.rot);
+      blend(buf, cw, ch, cx + dx - Math.floor(rw / 2), cy + dy - Math.floor(rh / 2), rrgba, rw, rh);
+    }
   }
 }
 

@@ -21,12 +21,12 @@ import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, put
 import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js";
 import { requirementsList } from "./requirements.js";
 import { BLOCK_REQUIREMENTS } from "./requirements_data.js";
-import { parseMod, modSpriteCandidates, modItemCandidates } from "./mod.js";
+import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js";
 import { blockDisplayName as resolveBlockDisplayName } from "./names.js";
 import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260910h";
+const APP_VERSION = "20260910i";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -335,22 +335,16 @@ function rebuildModDerived() {
     for (const [k, v] of m.bundle) modBundle.set(k, v);
   }
 
-  // 模组多层启发式：<base>-base 先画、<base> 居中、<base>-top 后画
+  // 模组多层：按方块 JSON 的 drawer 绘制栈解析静止层（不再用 -base/-top 启发式）
   for (const m of mods) {
-    const has = (n) => m.spritesOverride.has(n) || m.sprites.has(n);
     const seen = new Set();
     for (const [, def] of m.blocks) {
       if (seen.has(def.base)) continue;
       seen.add(def.base);
-      const base = def.base;
-      if (!has(base)) continue;
-      const layers = [];
-      if (has(base + "-base")) layers.push(base + "-base");
-      layers.push(base);
-      if (has(base + "-top")) layers.push(base + "-top");
-      if (layers.length > 1) {
-        modLayersMap[m.name + "-" + base] = layers;
-        modLayersMap[base] = layers;
+      const layers = drawerStaticLayers(def);
+      if (layers.length > 1 || layers.some((x) => typeof x === "object")) {
+        modLayersMap[m.name + "-" + def.base] = layers;
+        modLayersMap[def.base] = layers;
       }
     }
   }
@@ -514,7 +508,12 @@ function collectNeeded(schem) {
   for (const t of schem.tiles) {
     add(t.block, true);
     const ls = LAYERS[t.block] || modLayersMap[t.block];
-    if (ls) for (const l of ls) add(l, l === t.block);
+    if (ls) {
+      for (const l of ls) {
+        const lname = typeof l === "string" ? l : l && l.name;
+        if (lname) add(lname, lname === t.block);
+      }
+    }
     if (BRIDGE_BLOCKS.has(t.block) || modBridgeNames.has(t.block)) {
       add(t.block + "-bridge", false);
       add(t.block + "-arrow", false);

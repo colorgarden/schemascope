@@ -164,12 +164,10 @@ UI emoji → 去掉。
   以及 `thruster`、`wave`/`tsunami`/`sublimate`、`liquid-overflow-gate` 等。
   `sorter` / `inverted-sorter` / `liquid-source` **不含 `source-bottom`**（v159.7 中该层并不存在；
   `liquid-source` 的 `source-bottom` 由配置覆盖层在 sprite 之后绘制），否则不透明灰层会盖住配置色。
-- **工作态贴图不绘制**：`kiln` / `silicon-smelter` / `silicon-crucible` / `surge-smelter`（DrawFlame）、
-  `plastanium-compressor`（DrawFade）、`slag-incinerator`（DrawCrucibleFlame）、
-  `combustion/steam/differential/rtg-generator`（DrawWarmupRegion）、`thorium-reactor`（冷却液量门控）、
-  `mender` / `mend-projector` / `overdrive-projector` / `overdrive-dome`（heat 脉动）等
-  在工作/加热/脉动时才显示，静止渲染不画（已从 `LAYERS` 移除）；
-  常驻层（钻头 rotator/top、spore-press、cultivator、illuminator、单位工厂/载荷/管道 top、battery 等）保留。
+- **原版顶盖（已恢复）**：`kiln` / `silicon-smelter` / `silicon-crucible` / `surge-smelter`、
+  `plastanium-compressor`、`slag-incinerator`、`combustion/steam/differential/rtg-generator`、
+  `thorium-reactor`、`mender`、`mend-projector`、`overdrive-projector`、`overdrive-dome` 按用户要求
+  恢复为 `[base, base-top]` 常驻绘制（这些静态顶盖 region 与模组 `drawer` 判定相互独立）。
   `vent-condenser` 层序为 bottom→rotator→mid→base。
 
 ## 六、模组支持
@@ -208,8 +206,16 @@ UI emoji → 去掉。
   fixture）；通用性由合成模组测试固定（任意名字 + 类型即可正确分类/注册/渲染）。
 - **渲染集成**：贴图查找顺序为 内存 → 模组 `sprites-override` → 本地 `assets/sprites` →
   镜像源（超时/自动切换）→ 模组 `sprites` → 占位；模组方块缺失贴图但 JSON 有 `size`
-  时按该尺寸占位；模组方块多层启发式（`<base>-base` 在前、`<base>-top` 在后）仅在
-  vanilla `LAYERS` 未定义该块时生效。
+  时按该尺寸占位。
+- **模组多层 = 按 JSON `drawer` 绘制栈解析**（`js/mod.js` 的 `drawerStaticLayers`）：
+  仅保留 `DrawDefault`（本体）与 `DrawRegion`（`base+suffix`，支持 `x`/`y` 偏移 ×4、`rotation` 角度；
+  `suffix` 支持中文如 `-顶`/`-底`/`-转`；类型比较大小写不敏感，`DrawMulti.drawers` 递归）；
+  火焰/发光/工作态（DrawFlame/DrawGlowRegion/DrawCultivator/DrawWarmupRegion/DrawFade/…）一律跳过。
+  无 drawer 时按该 `type` 原版默认：`Drill`/`SolidPump` → `[base,-rotator,-top]`、
+  `UnitFactory` → `[base,-top]`、其它 → `[base]`。**不再使用 `-top` 自动启发式**。
+  `DrawTurret` 的炮塔部件（炮管/底座分层与旋转）暂未渲染，仅画本体。
+- **原版顶盖**：`LAYERS` 中 kiln/silicon-smelter/…/overdrive-dome 等 15 项 `[base, base-top]`
+  为常驻顶层 region，照旧绘制；只有钻石类 `-rotator`、工作态火焰/发光层按上方规则区分。
 - **耗材集成**：总耗材表 = vanilla `BLOCK_REQUIREMENTS` + 所有模组方块（内部名与 base 都注册）；
   物品名优先取模组 bundle `item.<内部名>.name`，物品图标优先模组贴图，候选顺序为
   `item-<ref>` → `<ref>` → `<ref>1` → `item-<ref>1`（后两个为**序号帧**贴图兜底，
@@ -334,7 +340,7 @@ python3 -m http.server 8000
 
 ```bash
 cd web
-node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/history.js js/main.20260910h.js
+node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/history.js js/main.20260910i.js
 node test/parse_test.mjs
 ```
 

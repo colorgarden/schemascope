@@ -32,6 +32,7 @@ import {
   setModOutline,
   setModPowerBlocks,
   setModPowerNodes,
+  setModLayers,
   nodeLaserOpts,
 } from "../js/render.js";
 import { blockDisplayName, modNameCandidates } from "../js/names.js";
@@ -42,7 +43,7 @@ import { simpleHash, createPrefetchManager } from "../js/prefetch.js";
 import { computeRequirements, requirementsList } from "../js/requirements.js";
 import { BLOCK_REQUIREMENTS } from "../js/requirements_data.js";
 import { openZip } from "../js/zip.js";
-import { parseMod, modSpriteCandidates, modItemCandidates, looseJson, parseRequirements } from "../js/mod.js";
+import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers, looseJson, parseRequirements } from "../js/mod.js";
 import { CN_BLOCKS } from "../js/cn_data.js";
 import {
   HISTORY_KEY,
@@ -1174,13 +1175,17 @@ function testConfigRender() {
   check("LAYERS 不含 payload-conveyor", !("payload-conveyor" in LAYERS));
   check("LAYERS 保留 battery（回归）", JSON.stringify(LAYERS.battery) === JSON.stringify(["battery", "battery-top"]));
 
-  // 工作态才出现的层已移除（DrawFlame/DrawWarmup/heat 等）
+  // 原版顶盖已恢复（[base, base-top]）
   for (const k of [
     "kiln", "silicon-smelter", "silicon-crucible", "surge-smelter", "plastanium-compressor",
     "slag-incinerator", "combustion-generator", "steam-generator", "differential-generator",
     "rtg-generator", "thorium-reactor", "mender", "mend-projector", "overdrive-projector", "overdrive-dome",
   ]) {
-    check(`工作态层已移除：${k}`, !(k in LAYERS), LAYERS[k] && JSON.stringify(LAYERS[k]));
+    check(
+      `原版顶盖已恢复：${k}`,
+      JSON.stringify(LAYERS[k]) === JSON.stringify([k, k + "-top"]),
+      LAYERS[k] && JSON.stringify(LAYERS[k])
+    );
   }
 
   // vent-condenser 层序（bottom→rotator→mid→base），turbine base→rotator
@@ -1295,6 +1300,84 @@ async function testV0() {
   // 仍兼容非标准旧形式
   const cm2 = parseContentMap("{0:{surge-alloy:12},4:{water:0}}");
   check("contentMap 非标准回退正则", cm2.get("0,12") === "surge-alloy" && cm2.get("4,0") === "water");
+}
+
+// -----------------------------------------------------------------------------
+// 8d. 模组 drawer 静态层解析
+// -----------------------------------------------------------------------------
+function testDrawerLayers() {
+  console.log("== 模组 drawer 静态层测试 ==");
+
+  // 真实例：DrawDefault + DrawFlame → 只画本体
+  let L = drawerStaticLayers({ base: "大窑炉", type: "GenericCrafter", drawer: ["DrawDefault", "DrawFlame"] });
+  check("drawer：[DrawDefault,DrawFlame] → [base]", JSON.stringify(L) === JSON.stringify(["大窑炉"]), JSON.stringify(L));
+
+  // DrawDefault + DrawCultivator + DrawRegion(-top) → top 常驻
+  L = drawerStaticLayers({ base: "重型培养机", type: "GenericCrafter", drawer: ["DrawDefault", "DrawCultivator", { type: "DrawRegion", suffix: "-top" }] });
+  check("drawer：培养机 → [base, base-top]", JSON.stringify(L) === JSON.stringify(["重型培养机", "重型培养机-top"]), JSON.stringify(L));
+
+  // bottom + default + flame + -顶
+  L = drawerStaticLayers({ base: "复合合金冶炼厂", type: "GenericCrafter", drawer: [{ type: "DrawRegion", suffix: "-bottom" }, "DrawDefault", { type: "DrawFlame" }, { type: "DrawRegion", suffix: "-顶" }] });
+  check(
+    "drawer：复合合金冶炼厂 → [-bottom, base, -顶]",
+    JSON.stringify(L) === JSON.stringify(["复合合金冶炼厂-bottom", "复合合金冶炼厂", "复合合金冶炼厂-顶"]),
+    JSON.stringify(L)
+  );
+
+  // 偏移项 x=20,y=-20 → dx=80, dy=80
+  L = drawerStaticLayers({ base: "任务-油站", type: "GenericCrafter", drawer: [{ type: "DrawRegion", x: 20, y: -20 }] });
+  check(
+    "drawer：偏移 x20/y-20 → dx80/dy80",
+    L.length === 1 && typeof L[0] === "object" && L[0].name === "任务-油站" && L[0].dx === 80 && L[0].dy === 80,
+    JSON.stringify(L)
+  );
+
+  // 小写 drawRegion 识别
+  L = drawerStaticLayers({ base: "相织布热压机", type: "GenericCrafter", drawer: [{ type: "drawRegion", suffix: "-bottom" }, "DrawDefault", { type: "DrawFlame" }] });
+  check("drawer：小写 drawRegion 识别", JSON.stringify(L) === JSON.stringify(["相织布热压机-bottom", "相织布热压机"]), JSON.stringify(L));
+
+  // DrawMulti 容器
+  L = drawerStaticLayers({ base: "大窑炉", type: "GenericCrafter", drawer: { type: "DrawMulti", drawers: ["DrawDefault", "DrawFlame"] } });
+  check("drawer：DrawMulti 递归", JSON.stringify(L) === JSON.stringify(["大窑炉"]), JSON.stringify(L));
+
+  // 未知类型全部跳过（无有效项）→ type 默认
+  L = drawerStaticLayers({ base: "X", type: "GenericCrafter", drawer: ["DrawFlame", "DrawGlowRegion", "DrawPistons", "DrawWarmupRegion"] });
+  check("drawer：未知/工作态全跳过 → 默认 [base]", JSON.stringify(L) === JSON.stringify(["X"]), JSON.stringify(L));
+
+  // type 默认行为
+  check("type 默认 Drill → 三层", JSON.stringify(drawerStaticLayers({ base: "d", type: "Drill" })) === JSON.stringify(["d", "d-rotator", "d-top"]));
+  check("type 默认 SolidPump → 三层", JSON.stringify(drawerStaticLayers({ base: "p", type: "SolidPump" })) === JSON.stringify(["p", "p-rotator", "p-top"]));
+  check("type 默认 UnitFactory → 两层", JSON.stringify(drawerStaticLayers({ base: "f", type: "UnitFactory" })) === JSON.stringify(["f", "f-top"]));
+  for (const t of ["GenericCrafter", "ForceProjector", "MendProjector", "OverdriveProjector", "ImpactReactor"]) {
+    check(`type 默认 ${t} → [base]`, JSON.stringify(drawerStaticLayers({ base: "b", type: t })) === JSON.stringify(["b"]), t);
+  }
+
+  // 去重：DrawDefault 重复
+  L = drawerStaticLayers({ base: "z", type: "GenericCrafter", drawer: ["DrawDefault", "DrawDefault"] });
+  check("drawer：重复项去重", JSON.stringify(L) === JSON.stringify(["z"]), JSON.stringify(L));
+
+  // 渲染冒烟：对象层带偏移（用 16×16 贴图，偏移 8px 后应落在 16..31）
+  const W = 16;
+  const small = (r, g, b) => {
+    const rgba = new Uint8ClampedArray(W * W * 4);
+    for (let i = 0; i < W * W; i++) {
+      rgba[i * 4] = r;
+      rgba[i * 4 + 1] = g;
+      rgba[i * 4 + 2] = b;
+      rgba[i * 4 + 3] = 255;
+    }
+    return { w: W, h: W, size: 1, rgba, placeholder: false };
+  };
+  setModLayers({ "任务-油站": [{ name: "任务-油站", dx: 8, dy: 8, rot: 0 }] });
+  const schem = { width: 1, height: 1, tiles: [{ block: "任务-油站", x: 0, y: 0, rot: 0, config_type: "null", config: null }] };
+  const res = renderSchematic(schem, { "任务-油站": small(1, 2, 3) }, { scale: 1, pad: 0, transparent: true, grid: false });
+  const cw = TILE;
+  check(
+    "对象层偏移绘制：(30,30) 有色、(4,4) 空",
+    res.rgba[(30 * cw + 30) * 4] === 1 && res.rgba[(30 * cw + 30) * 4 + 2] === 3 && res.rgba[(4 * cw + 4) * 4 + 3] === 0,
+    `off=${res.rgba[(30 * cw + 30) * 4]} cornerA=${res.rgba[(4 * cw + 4) * 4 + 3]}`
+  );
+  setModLayers({});
 }
 
 // -----------------------------------------------------------------------------
@@ -1542,6 +1625,7 @@ async function main() {
   testHistory();
   await testFileInput();
   testConfigRender();
+  testDrawerLayers();
   await testV0();
   await testNet();
 

@@ -141,6 +141,80 @@ export function modItemCandidates(name) {
 }
 
 /**
+ * 按方块 JSON 的 `drawer` 绘制栈解析「静止渲染层」（纯函数）。
+ * 仅保留 DrawDefault（base）与 DrawRegion（base+suffix，可带 x/y/rotation 偏移）；
+ * 火焰/发光/工作态等一律跳过。无 drawer/无有效项时按 type 默认。
+ * @returns {Array<string|{name:string,dx:number,dy:number,rot:number}>}
+ */
+export function drawerStaticLayers(def) {
+  const base = def && def.base ? String(def.base) : "";
+  const out = [];
+  const seen = new Set();
+  const push = (name, obj) => {
+    if (!name) return;
+    const key = obj ? `${name}|${obj.dx}|${obj.dy}|${obj.rot}` : name;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(obj || name);
+  };
+  const typeOf = (d) => {
+    if (typeof d === "string") return d;
+    if (d && typeof d === "object" && typeof d.type === "string") return d.type;
+    return "";
+  };
+  const eq = (t, target) => String(t).toLowerCase() === target.toLowerCase();
+
+  const handle = (t, d) => {
+    if (eq(t, "DrawDefault")) {
+      push(base);
+      return;
+    }
+    if (eq(t, "DrawRegion")) {
+      const suffix = d && d.suffix != null ? String(d.suffix) : "";
+      const name = base + suffix;
+      const x = d && d.x !== undefined ? Number(d.x) || 0 : 0;
+      const y = d && d.y !== undefined ? Number(d.y) || 0 : 0;
+      const rotation = d && d.rotation !== undefined ? Number(d.rotation) || 0 : 0;
+      const dx = x * 4;
+      const dy = -y * 4;
+      if (dx === 0 && dy === 0 && rotation === 0) push(name);
+      else push(name, { name, dx, dy, rot: rotation });
+      return;
+    }
+    // 其它类型（火焰/发光/工作态/液体/未知）一律跳过
+  };
+
+  const walk = (d) => {
+    if (d == null) return;
+    if (typeof d === "string") {
+      handle(d, {});
+      return;
+    }
+    if (typeof d !== "object") return;
+    if (Array.isArray(d.drawers)) {
+      for (const sub of d.drawers) walk(sub);
+      return;
+    }
+    handle(typeOf(d), d);
+  };
+
+  const drawer = def ? def.drawer : undefined;
+  if (Array.isArray(drawer)) {
+    for (const d of drawer) walk(d);
+  } else if (drawer != null) {
+    walk(drawer);
+  }
+
+  if (out.length === 0) {
+    const type = def && def.type ? String(def.type).toLowerCase() : "block";
+    if (type === "drill" || type === "solidpump") return [base, base + "-rotator", base + "-top"];
+    if (type === "unitfactory") return [base, base + "-top"];
+    return [base];
+  }
+  return out;
+}
+
+/**
  * 构造懒解压贴图表：`size`/`has`/`keys` 基于中央目录条目（不解压），
  * `get(name)` 首次调用时才解压该条目并缓存为 Blob。
  * @param {object} zip openZip 结果
@@ -248,6 +322,7 @@ export async function parseMod(input, fileName = "mod.zip") {
       laserColor1: obj.laserColor1 !== undefined ? String(obj.laserColor1) : undefined,
       laserColor2: obj.laserColor2 !== undefined ? String(obj.laserColor2) : undefined,
       maxNodes: obj.maxNodes !== undefined ? Number(obj.maxNodes) : undefined,
+      drawer: obj.drawer,
     };
     const internal = name + "-" + base;
     blocks.set(internal, def);

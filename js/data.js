@@ -214,6 +214,23 @@ export const LAYERS = {
   sublimate: ["sublimate", "sublimate-top"],
   thruster: ["thruster", "thruster-top"],
   "liquid-overflow-gate": ["liquid-overflow-gate", "liquid-overflow-gate-top"],
+
+  // 原版顶盖（按用户要求恢复；官方为常驻或静态可见的顶层 region）
+  kiln: ["kiln", "kiln-top"],
+  "silicon-smelter": ["silicon-smelter", "silicon-smelter-top"],
+  "silicon-crucible": ["silicon-crucible", "silicon-crucible-top"],
+  "surge-smelter": ["surge-smelter", "surge-smelter-top"],
+  "plastanium-compressor": ["plastanium-compressor", "plastanium-compressor-top"],
+  "slag-incinerator": ["slag-incinerator", "slag-incinerator-top"],
+  "combustion-generator": ["combustion-generator", "combustion-generator-top"],
+  "steam-generator": ["steam-generator", "steam-generator-top"],
+  "differential-generator": ["differential-generator", "differential-generator-top"],
+  "rtg-generator": ["rtg-generator", "rtg-generator-top"],
+  "thorium-reactor": ["thorium-reactor", "thorium-reactor-top"],
+  mender: ["mender", "mender-top"],
+  "mend-projector": ["mend-projector", "mend-projector-top"],
+  "overdrive-projector": ["overdrive-projector", "overdrive-projector-top"],
+  "overdrive-dome": ["overdrive-dome", "overdrive-dome-top"],
 };
 
 // 辅助贴图相对 core/assets-raw/ 的路径兜底表（sprite_index.json 未索引时使用）。
