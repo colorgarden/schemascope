@@ -11,7 +11,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 
-import { parseSchematic, extractLogic, isProcessor, bytesToBase64, isTextBlueprint } from "../js/parser.js";
+import { parseSchematic, extractLogic, isProcessor, bytesToBase64, isTextBlueprint, parseContentMap, FALLBACK_BLOCKS, LEGACY_BLOCKS } from "../js/parser.js";
 import {
   computeLayout,
   tileFootprint,
@@ -1156,32 +1156,145 @@ function testConfigRender() {
   check("LAYERS.inverted-sorter 不含 source-bottom", JSON.stringify(LAYERS["inverted-sorter"]) === JSON.stringify(["inverted-sorter"]), JSON.stringify(LAYERS["inverted-sorter"]));
   check("LAYERS.liquid-source 不含 source-bottom", JSON.stringify(LAYERS["liquid-source"]) === JSON.stringify(["liquid-source"]), JSON.stringify(LAYERS["liquid-source"]));
 
-  // 双层建筑抽查
-  check(
-    "LAYERS.silicon-smelter = [base, -top]",
-    JSON.stringify(LAYERS["silicon-smelter"]) === JSON.stringify(["silicon-smelter", "silicon-smelter-top"]),
-    JSON.stringify(LAYERS["silicon-smelter"])
-  );
+  // 双层建筑抽查（保留项）
   check(
     "LAYERS.mechanical-drill 含 rotator+top",
     JSON.stringify(LAYERS["mechanical-drill"]) === JSON.stringify(["mechanical-drill", "mechanical-drill-rotator", "mechanical-drill-top"]),
     JSON.stringify(LAYERS["mechanical-drill"])
   );
   check("LAYERS.thruster = [thruster, -top]", JSON.stringify(LAYERS.thruster) === JSON.stringify(["thruster", "thruster-top"]), JSON.stringify(LAYERS.thruster));
+  check("LAYERS.plasma-bore = [base, -top]", JSON.stringify(LAYERS["plasma-bore"]) === JSON.stringify(["plasma-bore", "plasma-bore-top"]), JSON.stringify(LAYERS["plasma-bore"]));
+  check("LAYERS.additive-reconstructor 保留 -top", JSON.stringify(LAYERS["additive-reconstructor"]) === JSON.stringify(["additive-reconstructor", "additive-reconstructor-top"]));
+  check("LAYERS.payload-loader 保留 -top", JSON.stringify(LAYERS["payload-loader"]) === JSON.stringify(["payload-loader", "payload-loader-top"]));
+  check("LAYERS.spore-press 保留 -top", JSON.stringify(LAYERS["spore-press"]) === JSON.stringify(["spore-press", "spore-press-top"]));
+  check("LAYERS.cultivator 保留 -top", JSON.stringify(LAYERS["cultivator"]) === JSON.stringify(["cultivator", "cultivator-top"]));
+  check("LAYERS.illuminator 保留 -top", JSON.stringify(LAYERS["illuminator"]) === JSON.stringify(["illuminator", "illuminator-top"]));
   check("LAYERS 不含 force-projector", !("force-projector" in LAYERS));
   check("LAYERS 不含 shock-mine", !("shock-mine" in LAYERS));
   check("LAYERS 不含 payload-conveyor", !("payload-conveyor" in LAYERS));
   check("LAYERS 保留 battery（回归）", JSON.stringify(LAYERS.battery) === JSON.stringify(["battery", "battery-top"]));
 
-  // 双层冒烟：silicon-smelter 的 -top 第二层被绘制
-  const topSprites = { "silicon-smelter": clear(), "silicon-smelter-top": mk(1, 2, 3, 255) };
-  const topSchem = { width: 1, height: 1, tiles: [{ block: "silicon-smelter", x: 0, y: 0, rot: 0, config_type: "null", config: null }] };
+  // 工作态才出现的层已移除（DrawFlame/DrawWarmup/heat 等）
+  for (const k of [
+    "kiln", "silicon-smelter", "silicon-crucible", "surge-smelter", "plastanium-compressor",
+    "slag-incinerator", "combustion-generator", "steam-generator", "differential-generator",
+    "rtg-generator", "thorium-reactor", "mender", "mend-projector", "overdrive-projector", "overdrive-dome",
+  ]) {
+    check(`工作态层已移除：${k}`, !(k in LAYERS), LAYERS[k] && JSON.stringify(LAYERS[k]));
+  }
+
+  // vent-condenser 层序（bottom→rotator→mid→base），turbine base→rotator
+  check(
+    "LAYERS.vent-condenser 层序",
+    JSON.stringify(LAYERS["vent-condenser"]) ===
+      JSON.stringify(["vent-condenser-bottom", "vent-condenser-rotator", "vent-condenser-mid", "vent-condenser"]),
+    JSON.stringify(LAYERS["vent-condenser"])
+  );
+  check(
+    "LAYERS.turbine-condenser = [base, rotator]",
+    JSON.stringify(LAYERS["turbine-condenser"]) === JSON.stringify(["turbine-condenser", "turbine-condenser-rotator"]),
+    JSON.stringify(LAYERS["turbine-condenser"])
+  );
+
+  // 双层冒烟：plasma-bore 的 -top 第二层被绘制
+  const topSprites = { "plasma-bore": clear(), "plasma-bore-top": mk(1, 2, 3, 255) };
+  const topSchem = { width: 1, height: 1, tiles: [{ block: "plasma-bore", x: 0, y: 0, rot: 0, config_type: "null", config: null }] };
   const topRes = renderSchematic(topSchem, topSprites, { scale: 1, pad: 0, transparent: true, grid: false });
   check(
-    "silicon-smelter -top 第二层被绘制",
+    "plasma-bore -top 第二层被绘制",
     topRes.rgba[0] === 1 && topRes.rgba[1] === 2 && topRes.rgba[2] === 3,
     [topRes.rgba[0], topRes.rgba[1], topRes.rgba[2]].join(",")
   );
+}
+
+// -----------------------------------------------------------------------------
+// 8c. v0 旧格式 / 版本校验 / 旧名回退 / contentMap JSON
+// -----------------------------------------------------------------------------
+async function testV0() {
+  console.log("== v0 旧格式测试 ==");
+  const pack = (x, y) => ((x & 0xffff) << 16) | (y & 0xffff);
+  const u8 = (n) => Buffer.from([n & 0xff]);
+  const i16 = (n) => {
+    const b = Buffer.alloc(2);
+    b.writeInt16BE(n);
+    return b;
+  };
+  const i32 = (n) => {
+    const b = Buffer.alloc(4);
+    b.writeInt32BE(n);
+    return b;
+  };
+  const utf = (s) => {
+    const b = Buffer.from(s, "utf8");
+    return Buffer.concat([i16(b.length), b]);
+  };
+
+  const dict = [
+    "sorter", "unloader", "item-source", "liquid-source",
+    "bridge-conduit", "turbine-generator", "legacy-command-center", "illuminator",
+  ];
+  // tiles: [blockIndex, x, y, config(int), rot]
+  const tiles = [
+    [0, 0, 0, 4, 1],
+    [1, 1, 0, -1, 0],
+    [2, 2, 0, 0, 0],
+    [3, 3, 0, 3, 0],
+    [4, 4, 0, pack(6, 0), 0],
+    [5, 5, 0, 999, 0],
+    [6, 6, 0, 0, 0],
+    [7, 7, 0, 7, 2],
+  ];
+  const parts = [i16(8), i16(1), u8(0), u8(dict.length)];
+  for (const d of dict) parts.push(utf(d));
+  parts.push(i32(tiles.length));
+  for (const [bi, x, y, cfg, rot] of tiles) {
+    parts.push(u8(bi), i32(pack(x, y)), i32(cfg), u8(rot));
+  }
+  const body = Buffer.concat(parts);
+  const container = Buffer.concat([Buffer.from([0x6d, 0x73, 0x63, 0x68, 0x00]), zlib.deflateSync(body)]);
+  const schem = await parseSchematic(bytesToBase64(new Uint8Array(container)));
+
+  check("v0：version=0 解析成功", schem.version === 0 && schem.width === 8 && schem.height === 1, `v=${schem.version} ${schem.width}x${schem.height}`);
+  check("v0：LegacyBlock 被跳过（8→7）", schem.tiles.length === 7, `len=${schem.tiles.length}`);
+  check(
+    "v0：sorter item id4=sand",
+    schem.tiles[0].block === "sorter" && schem.tiles[0].config_type === "content" && schem.tiles[0].config === "sand" && schem.tiles[0].rot === 1,
+    JSON.stringify(schem.tiles[0])
+  );
+  check("v0：unloader value=-1 → null", schem.tiles[1].config_type === "content" && schem.tiles[1].config === null, JSON.stringify(schem.tiles[1]));
+  check("v0：item-source id0=copper", schem.tiles[2].config === "copper", JSON.stringify(schem.tiles[2]));
+  check("v0：liquid-source id3=cryofluid", schem.tiles[3].config === "cryofluid", JSON.stringify(schem.tiles[3]));
+  check(
+    "v0：bridge-conduit packed 相对点 = [2,0]",
+    schem.tiles[4].config_type === "point2" && JSON.stringify(schem.tiles[4].config) === JSON.stringify([2, 0]),
+    JSON.stringify(schem.tiles[4])
+  );
+  check("v0：旧名回退 turbine-generator→steam-generator", schem.tiles[5].block === "steam-generator", schem.tiles[5].block);
+  check("v0：illuminator 原样 int=7", schem.tiles[6].block === "illuminator" && schem.tiles[6].config_type === "int" && schem.tiles[6].config === 7, JSON.stringify(schem.tiles[6]));
+  check("v0：block_dict 已应用回退", schem.block_dict[5] === "steam-generator", schem.block_dict[5]);
+  check("FALLBACK_BLOCKS 51 项", Object.keys(FALLBACK_BLOCKS).length === 51, Object.keys(FALLBACK_BLOCKS).length);
+  check("LEGACY_BLOCKS 含 legacy-command-center", LEGACY_BLOCKS.has("legacy-command-center"));
+
+  // ver=2 → 抛「更新版本」
+  const c2 = Buffer.concat([Buffer.from([0x6d, 0x73, 0x63, 0x68, 0x02]), zlib.deflateSync(Buffer.from([0, 1, 0, 1, 0, 0, 0, 0, 0, 0]))]);
+  let verErr = "";
+  try {
+    await parseSchematic(bytesToBase64(new Uint8Array(c2)));
+  } catch (e) {
+    verErr = e.message;
+  }
+  check("ver=2 → 抛「更新版本」", /更新版本/.test(verErr) && /v2/.test(verErr), verErr);
+
+  // contentMap：官方 JSON 形式
+  const cm = parseContentMap('{"0":{"copper":0,"sand":4},"4":{"water":0,"cryofluid":3}}');
+  check(
+    "contentMap JSON：type→name→id",
+    cm.get("0,4") === "sand" && cm.get("4,3") === "cryofluid" && cm.get("0,0") === "copper",
+    [...cm.entries()].map(([k, v]) => `${k}=${v}`).join(",")
+  );
+  // 仍兼容非标准旧形式
+  const cm2 = parseContentMap("{0:{surge-alloy:12},4:{water:0}}");
+  check("contentMap 非标准回退正则", cm2.get("0,12") === "surge-alloy" && cm2.get("4,0") === "water");
 }
 
 // -----------------------------------------------------------------------------
@@ -1429,6 +1542,7 @@ async function main() {
   testHistory();
   await testFileInput();
   testConfigRender();
+  await testV0();
   await testNet();
 
   console.log("");

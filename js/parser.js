@@ -231,16 +231,33 @@ export function readObject(r, resolveContent) {
 // -----------------------------------------------------------------------------
 
 /**
- * 解析 Mindustry 非标准 JSON，如 {0:{surge-alloy:12},4:{water:0}}。
+ * 解析 contentMap。官方为 JSON `{"0":{"copper":1,...}}`（type → name → id）；
+ * 旧存档也可能是非标准 `{0:{surge-alloy:12}}`（无引号）→ 回退正则。
  * 返回 Map，键为 `${typeOrdinal},${id}`，值为名称。
  */
 export function parseContentMap(text) {
   const rev = new Map();
   if (!text) return rev;
+  const trimmed = String(text).trim();
+  if (trimmed.startsWith("{")) {
+    try {
+      const obj = JSON.parse(trimmed);
+      for (const [typeKey, nameMap] of Object.entries(obj)) {
+        const ct = Number(typeKey);
+        if (!nameMap || typeof nameMap !== "object") continue;
+        for (const [name, id] of Object.entries(nameMap)) {
+          rev.set(`${ct},${Number(id)}`, name);
+        }
+      }
+      return rev;
+    } catch (e) {
+      // 非标准 JSON → 回退正则
+    }
+  }
   const blockRe = /(\d+):\{([^}]*)\}/g;
   const itemRe = /([A-Za-z0-9_\-]+):(\d+)/g;
   let b;
-  while ((b = blockRe.exec(text)) !== null) {
+  while ((b = blockRe.exec(trimmed)) !== null) {
     const ct = Number(b[1]);
     const body = b[2];
     let it;
@@ -260,6 +277,123 @@ export function makeResolver(contentMap) {
     const label = CONTENT_TYPE_LABEL[ct] !== undefined ? CONTENT_TYPE_LABEL[ct] : "类型" + ct;
     return `${label}#${cid}`;
   };
+}
+
+// -----------------------------------------------------------------------------
+// 4b. v0 旧格式 config 映射 + 旧方块名回退（对照 Schematics.java / SaveFileReader）
+// -----------------------------------------------------------------------------
+
+export const SCHEMATIC_VERSION = 1;
+
+// 物品 id 顺序（v159.7 Items.java 声明序）
+const V0_ITEM_IDS = [
+  "copper", "lead", "metaglass", "graphite", "sand", "coal", "titanium", "thorium",
+  "scrap", "silicon", "plastanium", "phase-fabric", "surge-alloy", "spore-pod",
+  "blast-compound", "pyratite", "beryllium", "tungsten", "oxide", "carbide",
+  "fissile-matter", "dormant-cyst",
+];
+// 液体 id 顺序（v159.7 Liquids.java 声明序）
+const V0_LIQUID_IDS = [
+  "water", "slag", "oil", "cryofluid", "arkycite", "gallium", "neoplasm",
+  "ozone", "hydrogen", "nitrogen", "cyanogen",
+];
+const V0_ITEM_BLOCKS = new Set(["sorter", "inverted-sorter", "unloader", "item-source"]);
+const V0_LIQUID_BLOCKS = new Set(["liquid-source"]);
+const V0_BRIDGE_BLOCKS = new Set([
+  "mass-driver", "bridge-conveyor", "phase-conveyor", "bridge-conduit", "reinforced-bridge-conduit",
+]);
+const V0_LIGHT_BLOCKS = new Set(["illuminator"]);
+
+// 旧方块名 → 新名（SaveFileReader.fallback，51 项）
+export const FALLBACK_BLOCKS = {
+  "dart-mech-pad": "legacy-mech-pad",
+  "dart-ship-pad": "legacy-mech-pad",
+  "javelin-ship-pad": "legacy-mech-pad",
+  "trident-ship-pad": "legacy-mech-pad",
+  "glaive-ship-pad": "legacy-mech-pad",
+  "alpha-mech-pad": "legacy-mech-pad",
+  "tau-mech-pad": "legacy-mech-pad",
+  "omega-mech-pad": "legacy-mech-pad",
+  "delta-mech-pad": "legacy-mech-pad",
+  "draug-factory": "legacy-unit-factory",
+  "spirit-factory": "legacy-unit-factory",
+  "phantom-factory": "legacy-unit-factory",
+  "wraith-factory": "legacy-unit-factory",
+  "ghoul-factory": "legacy-unit-factory-air",
+  "revenant-factory": "legacy-unit-factory-air",
+  "dagger-factory": "legacy-unit-factory",
+  "crawler-factory": "legacy-unit-factory",
+  "titan-factory": "legacy-unit-factory-ground",
+  "fortress-factory": "legacy-unit-factory-ground",
+  "mass-conveyor": "payload-conveyor",
+  vestige: "scepter",
+  "turbine-generator": "steam-generator",
+  rocks: "stone-wall",
+  sporerocks: "spore-wall",
+  icerocks: "ice-wall",
+  dunerocks: "dune-wall",
+  sandrocks: "sand-wall",
+  shalerocks: "shale-wall",
+  snowrocks: "snow-wall",
+  saltrocks: "salt-wall",
+  dirtwall: "dirt-wall",
+  ignarock: "basalt",
+  holostone: "dacite",
+  "holostone-wall": "dacite-wall",
+  rock: "boulder",
+  snowrock: "snow-boulder",
+  cliffs: "stone-wall",
+  craters: "crater-stone",
+  deepwater: "deep-water",
+  water: "shallow-water",
+  sand: "sand-floor",
+  slag: "molten-slag",
+  cryofluidmixer: "cryofluid-mixer",
+  "block-forge": "constructor",
+  "block-unloader": "payload-unloader",
+  "block-loader": "payload-loader",
+  "thermal-pump": "impulse-pump",
+  "alloy-smelter": "surge-smelter",
+  "steam-vent": "rhyolite-vent",
+  fabricator: "tank-fabricator",
+  "basic-reconstructor": "refabricator",
+};
+
+// LegacyBlock → 解析后剔除（不渲染）
+export const LEGACY_BLOCKS = new Set([
+  "legacy-mech-pad",
+  "legacy-unit-factory",
+  "legacy-unit-factory-air",
+  "legacy-unit-factory-ground",
+  "legacy-command-center",
+]);
+
+function unpackX(v) {
+  let x = (v >> 16) & 0xffff;
+  return x >= 0x8000 ? x - 0x10000 : x;
+}
+function unpackY(v) {
+  let y = v & 0xffff;
+  return y >= 0x8000 ? y - 0x10000 : y;
+}
+
+/** v0 每块 config（裸 int，按方块类型映射）；返回 {type, value}。 */
+export function mapV0Config(block, value, positionPacked) {
+  if (V0_ITEM_BLOCKS.has(block)) {
+    const id = value;
+    return { type: "content", value: id >= 0 && id < V0_ITEM_IDS.length ? V0_ITEM_IDS[id] : null };
+  }
+  if (V0_LIQUID_BLOCKS.has(block)) {
+    const id = value;
+    return { type: "content", value: id >= 0 && id < V0_LIQUID_IDS.length ? V0_LIQUID_IDS[id] : null };
+  }
+  if (V0_BRIDGE_BLOCKS.has(block)) {
+    return { type: "point2", value: [unpackX(value) - unpackX(positionPacked), unpackY(value) - unpackY(positionPacked)] };
+  }
+  if (V0_LIGHT_BLOCKS.has(block)) {
+    return { type: "int", value };
+  }
+  return { type: "null", value: null };
 }
 
 // -----------------------------------------------------------------------------
@@ -414,6 +548,9 @@ function _textToAscii(str) {
  */
 export async function parseSchematic(input) {
   const { version, body } = await loadContainer(input);
+  if (version > SCHEMATIC_VERSION) {
+    throw new Error(`蓝图来自更新版本的游戏（v${version}），当前最高支持 v1。`);
+  }
   const r = new Reader(body);
 
   const width = r.i16();
@@ -428,10 +565,13 @@ export async function parseSchematic(input) {
     tags[key] = val;
   }
 
-  // ---- 方块字典 ----
+  // ---- 方块字典（旧名 → 新名回退）----
   const dictCount = r.u8();
   const blockDict = [];
-  for (let i = 0; i < dictCount; i++) blockDict.push(r.utf());
+  for (let i = 0; i < dictCount; i++) {
+    const rawName = r.utf();
+    blockDict.push(FALLBACK_BLOCKS[rawName] || rawName);
+  }
 
   // ---- contentMap ----
   const contentMap = parseContentMap(tags["contentMap"] || "");
@@ -444,13 +584,14 @@ export async function parseSchematic(input) {
     const bi = r.u8();
     const packed = r.i32();
     // arc Point2.pack：x 在高 16 位、y 在低 16 位（均为有符号）
-    let x = (packed >> 16) & 0xffff;
-    x = x >= 0x8000 ? x - 0x10000 : x;
-    let y = packed & 0xffff;
-    y = y >= 0x8000 ? y - 0x10000 : y;
-    const cfg = readObject(r, resolve);
-    const rot = r.i8();
+    const x = unpackX(packed);
+    const y = unpackY(packed);
+    // v0：裸 int + 按方块类型映射；v1：TypeIO
     const block = bi < blockDict.length ? blockDict[bi] : "#" + bi;
+    const cfg =
+      version === 0 ? mapV0Config(block, r.i32(), packed) : readObject(r, resolve);
+    const rot = r.i8();
+    if (LEGACY_BLOCKS.has(block)) continue; // LegacyBlock → Blocks.air，不渲染
     tiles.push({
       block,
       x,

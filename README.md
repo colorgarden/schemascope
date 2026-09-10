@@ -164,6 +164,13 @@ UI emoji → 去掉。
   以及 `thruster`、`wave`/`tsunami`/`sublimate`、`liquid-overflow-gate` 等。
   `sorter` / `inverted-sorter` / `liquid-source` **不含 `source-bottom`**（v159.7 中该层并不存在；
   `liquid-source` 的 `source-bottom` 由配置覆盖层在 sprite 之后绘制），否则不透明灰层会盖住配置色。
+- **工作态贴图不绘制**：`kiln` / `silicon-smelter` / `silicon-crucible` / `surge-smelter`（DrawFlame）、
+  `plastanium-compressor`（DrawFade）、`slag-incinerator`（DrawCrucibleFlame）、
+  `combustion/steam/differential/rtg-generator`（DrawWarmupRegion）、`thorium-reactor`（冷却液量门控）、
+  `mender` / `mend-projector` / `overdrive-projector` / `overdrive-dome`（heat 脉动）等
+  在工作/加热/脉动时才显示，静止渲染不画（已从 `LAYERS` 移除）；
+  常驻层（钻头 rotator/top、spore-press、cultivator、illuminator、单位工厂/载荷/管道 top、battery 等）保留。
+  `vent-condenser` 层序为 bottom→rotator→mid→base。
 
 ## 六、模组支持
 
@@ -212,6 +219,20 @@ UI emoji → 去掉。
 - 模组变化后会清空内存贴图缓存并自动重渲染当前蓝图；未识别方块会在状态栏提示可能缺少的模组。
 
 ## 七、输入即解析与持久化缓存
+
+### 蓝图格式支持（对照 v159.7 Schematics.read）
+- **v1**：`msch` + version + zlib；tile config 走 `TypeIO.readObject`（当前主格式）。
+- **v0 旧格式**：tile config 为**裸 int + 按方块类型映射**（`mapConfig`）——
+  Sorter/Unloader/ItemSource → 物品 id 名（Items.java 声明序）；LiquidSource → 液体 id 名；
+  MassDriver/ItemBridge → 打包 Point2 相对位置；LightBlock(illuminator) → 原样 int；其它 → null。
+  每块恒 4 字节 config + 1 字节 rotation。
+- **版本校验**：`version > 1` 抛错「蓝图来自更新版本的游戏（vN），当前最高支持 v1」。
+- **旧方块名回退**：按官方 `SaveFileReader.fallback`（51 项）映射后用于贴图/显示
+  （如 `turbine-generator→steam-generator`、`mass-conveyor→payload-conveyor`、`block-forge→constructor`）。
+- **LegacyBlock 跳过**：`legacy-mech-pad` / `legacy-unit-factory(-air/-ground)` / `legacy-command-center`
+  解析后剔除，不渲染。
+- **contentMap**：优先 `JSON.parse`（官方 `{"0":{"copper":1}}`），失败回退旧正则
+  （`{0:{surge-alloy:12}}`）。
 
 ### 输入即解析 + 预加载
 - 在文本框 `input`、文件选择 `change`、拖拽 `drop` 三处加了 **350ms 防抖自动解析**：
@@ -313,7 +334,7 @@ python3 -m http.server 8000
 
 ```bash
 cd web
-node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/history.js js/main.20260910g.js
+node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/history.js js/main.20260910h.js
 node test/parse_test.mjs
 ```
 

@@ -153,7 +153,7 @@ export const LAYERS = {
   "large-cliff-crusher": ["large-cliff-crusher", "large-cliff-crusher-rotator-bottom", "large-cliff-crusher-rotator", "large-cliff-crusher-top"],
   // 冷凝器（仅 rotator）
   "turbine-condenser": ["turbine-condenser", "turbine-condenser-rotator"],
-  "vent-condenser": ["vent-condenser", "vent-condenser-rotator"],
+  "vent-condenser": ["vent-condenser-bottom", "vent-condenser-rotator", "vent-condenser-mid", "vent-condenser"],
   // 仅 top
   "impact-drill": ["impact-drill", "impact-drill-top"],
   "eruption-drill": ["eruption-drill", "eruption-drill-top"],
@@ -161,28 +161,13 @@ export const LAYERS = {
   "large-plasma-bore": ["large-plasma-bore", "large-plasma-bore-top"],
 
   // 生产类（base → top）
-  kiln: ["kiln", "kiln-top"],
-  "plastanium-compressor": ["plastanium-compressor", "plastanium-compressor-top"],
-  "silicon-crucible": ["silicon-crucible", "silicon-crucible-top"],
-  "silicon-smelter": ["silicon-smelter", "silicon-smelter-top"],
-  "slag-incinerator": ["slag-incinerator", "slag-incinerator-top"],
   "spore-press": ["spore-press", "spore-press-top"],
-  "surge-smelter": ["surge-smelter", "surge-smelter-top"],
   cultivator: ["cultivator", "cultivator-top"],
 
   // 电力类（base → top）
-  "combustion-generator": ["combustion-generator", "combustion-generator-top"],
-  "steam-generator": ["steam-generator", "steam-generator-top"],
-  "differential-generator": ["differential-generator", "differential-generator-top"],
-  "thorium-reactor": ["thorium-reactor", "thorium-reactor-top"],
-  "rtg-generator": ["rtg-generator", "rtg-generator-top"],
   illuminator: ["illuminator", "illuminator-top"],
 
   // 防御类（base → top；force-projector / shock-mine 不处理）
-  mender: ["mender", "mender-top"],
-  "mend-projector": ["mend-projector", "mend-projector-top"],
-  "overdrive-projector": ["overdrive-projector", "overdrive-projector-top"],
-  "overdrive-dome": ["overdrive-dome", "overdrive-dome-top"],
 
   // 单位工厂/重构类（base → top）
   "additive-reconstructor": ["additive-reconstructor", "additive-reconstructor-top"],
