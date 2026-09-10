@@ -57,13 +57,14 @@ body {
 
 .panel-input { order: 1; }
 .panel-mod { order: 2; }
-.panel-options { order: 3; }
-.meta-panel { order: 4; }
-.panel-req { order: 5; }
-.status { order: 6; }
-.panel-procs { order: 7; }
-.panel-render { order: 8; }
-.panel-legend { order: 9; }
+.panel-history { order: 3; }
+.panel-options { order: 4; }
+.meta-panel { order: 5; }
+.panel-req { order: 6; }
+.status { order: 7; }
+.panel-procs { order: 8; }
+.panel-render { order: 9; }
+.panel-legend { order: 10; }
 
 header {
   border-bottom: 1px solid var(--line);
@@ -650,6 +651,83 @@ h1 .sub {
 
 .mod-remove:hover {
   border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* 历史记录 */
+.history-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+  transition: 0.15s;
+}
+
+.link-btn:hover {
+  color: var(--accent);
+  background: rgba(94, 234, 212, 0.08);
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+
+.history-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.history-name {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-meta {
+  color: var(--muted);
+  font-size: 11.5px;
+  margin-top: 2px;
+}
+
+.history-remove {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  flex: 0 0 auto;
+}
+
+.history-remove:hover {
   color: var(--danger);
 }
 

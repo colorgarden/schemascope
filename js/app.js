@@ -23,6 +23,7 @@ import { requirementsList } from "./requirements.js";
 import { BLOCK_REQUIREMENTS } from "./requirements_data.js";
 import { parseMod, modSpriteCandidates, modItemCandidates } from "./mod.js";
 import { blockDisplayName as resolveBlockDisplayName } from "./names.js";
+import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -75,6 +76,9 @@ const els = {
   sourceProbe: $("source-probe"),
   sourceCurrent: $("source-current"),
   sourceBadges: $("source-badges"),
+  historyWrap: $("history-wrap"),
+  historyList: $("history-list"),
+  historyClear: $("history-clear"),
 };
 
 // -----------------------------------------------------------------------------
@@ -969,8 +973,6 @@ async function buildRequirements(schem) {
 // 输入即解析 + 后台预加载（防抖）
 // -----------------------------------------------------------------------------
 
-const LAST_INPUT_KEY = "msch-last-input";
-const LAST_INPUT_MAX = 300 * 1024; // 超过 300KB 不持久化
 const AUTO_PARSE_DELAY = 350;
 
 let parsedCount = 0;
@@ -987,28 +989,79 @@ const onSpriteProgress = (done, total) =>
 
 const prefetch = createPrefetchManager(parseSchematic, loadSpritesFor);
 
-function saveLastInput(text) {
-  try {
-    if (typeof text !== "string" || text.length === 0) return;
-    if (text.length <= LAST_INPUT_MAX) localStorage.setItem(LAST_INPUT_KEY, text);
-    else localStorage.removeItem(LAST_INPUT_KEY);
-  } catch (e) {
-    // localStorage 不可用：忽略
+// ---- 本地历史记录 ----
+let history = [];
+
+function renderHistory() {
+  if (!els.historyWrap) return;
+  if (!history.length) {
+    els.historyWrap.style.display = "none";
+    els.historyList.replaceChildren();
+    return;
   }
+  els.historyWrap.style.display = "block";
+  const frag = document.createDocumentFragment();
+  for (const e of history) {
+    const item = document.createElement("div");
+    item.className = "history-item";
+    const main = document.createElement("div");
+    main.className = "history-main";
+    main.dataset.hash = e.hash;
+    main.title = "点击载入此蓝图";
+    const nm = document.createElement("div");
+    nm.className = "history-name";
+    nm.textContent = e.name || "未命名";
+    const meta = document.createElement("div");
+    meta.className = "history-meta";
+    meta.textContent = `${e.w}×${e.h} · ${e.tiles} 方块 · ${formatRelativeTime(e.time)}`;
+    main.append(nm, meta);
+    const rm = document.createElement("button");
+    rm.className = "history-remove";
+    rm.textContent = "×";
+    rm.dataset.hash = e.hash;
+    rm.title = "删除";
+    item.append(main, rm);
+    frag.appendChild(item);
+  }
+  els.historyList.replaceChildren(frag);
 }
 
-function readLastInput() {
-  try {
-    return localStorage.getItem(LAST_INPUT_KEY) || "";
-  } catch (e) {
-    return "";
+function persistHistory(next) {
+  const saved = saveHistory(next);
+  if (saved) history = saved;
+  renderHistory();
+}
+
+/** 解析+渲染成功后写入/更新历史（同 hash 去重并置顶）。 */
+function recordHistory(schem, input) {
+  if (typeof input !== "string" || !input) return;
+  if (input.length > HISTORY_MAX_INPUT) {
+    setStatus("蓝图过大（>1MB），未记录到历史。");
+    return;
   }
+  const entry = {
+    hash: simpleHash(input),
+    name: (schem.tags && schem.tags.name) || "未命名",
+    w: schem.width,
+    h: schem.height,
+    tiles: schem.tiles.length,
+    time: Date.now(),
+    input,
+  };
+  persistHistory(addHistory(history, entry));
+}
+
+/** 载入历史条目：填入输入框并触发解析渲染（成功后自动置顶刷新时间）。 */
+function loadHistoryEntry(hash) {
+  const e = history.find((x) => x.hash === hash);
+  if (!e) return;
+  els.input.value = e.input || "";
+  run(e.input);
 }
 
 let autoParseTimer = null;
 /** 防抖：输入停止约 350ms 后自动解析 + 后台预加载（不自动渲染）。 */
-function scheduleAutoParse(input, persist) {
-  if (persist) saveLastInput(input);
+function scheduleAutoParse(input) {
   clearTimeout(autoParseTimer);
   autoParseTimer = setTimeout(() => autoParse(input), AUTO_PARSE_DELAY);
 }
@@ -1053,6 +1106,7 @@ async function run(input) {
     if (!prefetch.current || prefetch.current.key !== r.key) return;
 
     await renderCurrent(schem);
+    recordHistory(schem, input);
   } catch (err) {
     console.error(err);
     showError("解析或渲染失败：" + (err && err.message ? err.message : err));
@@ -1241,7 +1295,7 @@ els.parseBtn.addEventListener("click", () => {
 // 输入即解析：停止输入约 350ms 后自动解析并在后台预加载贴图（不自动渲染）
 els.input.addEventListener("input", () => {
   clearError();
-  scheduleAutoParse(els.input.value, true);
+  scheduleAutoParse(els.input.value);
 });
 
 els.file.addEventListener("change", async () => {
@@ -1252,7 +1306,7 @@ els.file.addEventListener("change", async () => {
     setStatus("正在读取文件…");
     const buf = new Uint8Array(await file.arrayBuffer());
     els.input.value = file.name.replace(/\.[^.]+$/, "") + "（已选择文件：" + file.name + "）";
-    scheduleAutoParse(buf, false); // 后台预加载
+    scheduleAutoParse(buf); // 后台预加载
     await run(buf); // 文件选择后照旧直接渲染
   } catch (e) {
     showError("读取文件失败：" + e.message);
@@ -1280,7 +1334,7 @@ els.drop.addEventListener("drop", async (e) => {
     setStatus("正在读取拖入文件…");
     const buf = new Uint8Array(await file.arrayBuffer());
     els.input.value = file.name.replace(/\.[^.]+$/, "") + "（已拖入文件：" + file.name + "）";
-    scheduleAutoParse(buf, false); // 后台预加载
+    scheduleAutoParse(buf); // 后台预加载
     await run(buf);
   } catch (err) {
     showError("读取拖入文件失败：" + err.message);
@@ -1329,6 +1383,26 @@ if (els.sourceBadges) {
   els.sourceBadges.addEventListener("click", (e) => {
     const b = e.target.closest(".src-badge");
     if (b) applySourceChoice(b.dataset.key);
+  });
+}
+
+// 历史记录：点击载入 / 删除 / 清空
+if (els.historyList) {
+  els.historyList.addEventListener("click", (e) => {
+    const rm = e.target.closest(".history-remove");
+    if (rm) {
+      persistHistory(removeHistory(history, rm.dataset.hash));
+      setStatus("已删除该历史记录。");
+      return;
+    }
+    const main = e.target.closest(".history-main");
+    if (main) loadHistoryEntry(main.dataset.hash);
+  });
+}
+if (els.historyClear) {
+  els.historyClear.addEventListener("click", () => {
+    persistHistory([]);
+    setStatus("历史记录已清空。");
   });
 }
 
@@ -1514,12 +1588,13 @@ if (els.clearCache) {
   updateSourceCurrent();
   loadOpacityOpts();
   await loadCachedMods();
-  // 回填上次输入并触发预加载（不自动渲染）
-  const last = readLastInput();
-  if (last) {
-    els.input.value = last;
-    scheduleAutoParse(last, false);
-  } else {
-    setStatus("");
+  // 一次性迁移：清理旧的「蓝图本体」自动缓存键（本工具不再回填蓝图）
+  try {
+    localStorage.removeItem("msch-last-input");
+  } catch (e) {
+    // 忽略
   }
+  history = loadHistory();
+  renderHistory();
+  setStatus("");
 })();

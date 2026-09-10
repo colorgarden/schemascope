@@ -29,6 +29,7 @@ web/
   js/zip.js             纯 JS zip 读取器（STORED/DEFLATE，可单测）
   js/mod.js             模组 zip 解析（方块/贴图/bundle，可单测）
   js/names.js           方块显示名（bundle > JSON name > BLOCK_CN，可单测）
+  js/history.js         本地历史记录（容量策略纯函数，可单测）
   js/requirements.js    蓝图总耗材计算（可单测）
   js/requirements_data.js 方块耗材表 BLOCK_REQUIREMENTS + 物品中文名 ITEM_CN
   js/app.js             UI 逻辑
@@ -197,8 +198,18 @@ UI emoji → 去掉。
   并带竞态保护（输入变化时丢弃旧任务结果）。点击「解析并渲染」时若哈希命中，
   直接复用并 `await` 未完成的加载，通常近乎瞬时完成。
 - 贴图并发批量加载为 **16**。
-- 上次输入保存在 `localStorage.msch-last-input`（超过 300KB 不保存），
-  下次打开自动回填并触发预加载（**不自动渲染**）。
+- 打开页面时输入框为空（**不再自动缓存/回填蓝图本体**；旧键 `msch-last-input` 会在启动时清理）。
+  输入、选择文件、拖拽、点击历史条目均会触发预加载。
+
+### 本地历史记录
+- 解析+渲染成功后写入 `localStorage.msch-history`（JSON 数组，新→旧），条目：
+  `{ hash, name, w, h, tiles, time, input }`（`hash` 为输入哈希，`input` 为原始文本）。
+- 同 `hash` 去重并置顶（刷新时间）；点击历史项 = 填入输入框并重新解析渲染。
+- 容量策略（`js/history.js` 纯函数）：单条 `input > 1MB` 不记录；总条数 ≤ **16**；
+  总字节（按 `input.length`）≤ **2MB**，超限从最旧淘汰；写入失败（配额）→ 淘汰一半重试一次，
+  仍失败静默放弃。
+- UI：PC 左栏 / 移动端模组区之后的「历史记录」小节，列表项显示
+  `名称 · 宽×高 · 方块数 · 相对时间`，右侧 `×` 删除，标题旁「清空」；空历史时隐藏。
 
 ### 持久化缓存（Cache Storage API）
 - `js/cache.js` 用 `caches.open("msch-cache-v2")` 缓存贴图与 `sprite_index.json`：
@@ -266,7 +277,7 @@ python3 -m http.server 8000
 
 ```bash
 cd web
-node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/app.js
+node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/history.js js/app.js
 node test/parse_test.mjs
 ```
 

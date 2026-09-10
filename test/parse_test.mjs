@@ -41,6 +41,17 @@ import { BLOCK_REQUIREMENTS } from "../js/requirements_data.js";
 import { openZip } from "../js/zip.js";
 import { parseMod, modSpriteCandidates, modItemCandidates, looseJson, parseRequirements } from "../js/mod.js";
 import { CN_BLOCKS } from "../js/cn_data.js";
+import {
+  HISTORY_KEY,
+  HISTORY_MAX_ITEMS,
+  HISTORY_MAX_BYTES,
+  HISTORY_MAX_INPUT,
+  addHistory,
+  removeHistory,
+  saveHistory,
+  loadHistory,
+  formatRelativeTime,
+} from "../js/history.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -916,7 +927,89 @@ function testCnAndFrames() {
 }
 
 // -----------------------------------------------------------------------------
-// 7. 镜像源切换 / 超时 / 缓存（注入 mock fetch 与 mock Cache Storage）
+// 7. 本地历史记录（纯函数 + mock storage）
+// -----------------------------------------------------------------------------
+function testHistory() {
+  console.log("== 历史记录测试 ==");
+  const mk = (i, time, input) => ({
+    hash: "h" + i,
+    name: "N" + i,
+    w: 1,
+    h: 1,
+    tiles: 1,
+    time: time !== undefined ? time : 1000 + i,
+    input: input !== undefined ? input : "x",
+  });
+
+  let list = [];
+  list = addHistory(list, mk(1, 1000, "a"));
+  list = addHistory(list, mk(2, 2000, "b"));
+  check("add：新条目置顶", list.length === 2 && list[0].hash === "h2", list.map((e) => e.hash).join(","));
+  list = addHistory(list, { hash: "h1", name: "N1b", w: 1, h: 1, tiles: 1, time: 3000, input: "a" });
+  check(
+    "add：同 hash 去重置顶并更新时间",
+    list.length === 2 && list[0].hash === "h1" && list[0].time === 3000,
+    JSON.stringify(list)
+  );
+  const after = addHistory(list, mk(9, 1, "x".repeat(HISTORY_MAX_INPUT + 1)));
+  check("add：单条 >1MB 跳过", after.length === list.length && !after.some((e) => e.hash === "h9"), `len=${after.length}`);
+
+  let many = [];
+  for (let i = 0; i < 17; i++) many = addHistory(many, mk(i, i, "z"));
+  check(`淘汰：总条数 ≤${HISTORY_MAX_ITEMS}`, many.length === HISTORY_MAX_ITEMS, `len=${many.length}`);
+
+  let bigs = [];
+  for (let i = 0; i < 8; i++) bigs = addHistory(bigs, mk(i, i, "y".repeat(300000)));
+  const totalBytes = bigs.reduce((s, e) => s + e.input.length, 0);
+  check(
+    "淘汰：总字节 ≤2MB（从最旧淘汰）",
+    totalBytes <= HISTORY_MAX_BYTES && bigs.length < 8,
+    `len=${bigs.length} bytes=${totalBytes}`
+  );
+
+  check("remove：删除指定 hash", removeHistory(many, "h3").every((e) => e.hash !== "h3"));
+
+  // 写入失败 → 淘汰一半重试
+  const store = {};
+  let fail = 0;
+  const storage = {
+    setItem(k, v) {
+      if (fail > 0) {
+        fail--;
+        throw new Error("quota");
+      }
+      store[k] = v;
+    },
+    getItem(k) {
+      return k in store ? store[k] : null;
+    },
+  };
+  fail = 1;
+  const saved = saveHistory(bigs, storage);
+  check(
+    "save：首次失败淘汰一半重试成功",
+    Array.isArray(saved) && saved.length === Math.max(0, Math.floor(bigs.length / 2)),
+    saved && saved.length
+  );
+  fail = 2;
+  const saved2 = saveHistory(bigs, storage);
+  check("save：两次失败静默返回 null", saved2 === null);
+
+  fail = 0;
+  saveHistory(bigs, storage);
+  check("load：读回条数一致", loadHistory(storage).length === bigs.length, loadHistory(storage).length);
+  store[HISTORY_KEY] = "{bad";
+  check("load：损坏数据返回空数组", loadHistory(storage).length === 0);
+
+  const now = 10_000_000_000;
+  check("相对时间：刚刚", formatRelativeTime(now, now) === "刚刚");
+  check("相对时间：3 分钟前", formatRelativeTime(now - 3 * 60 * 1000, now) === "3 分钟前");
+  check("相对时间：昨天", formatRelativeTime(now - 25 * 3600 * 1000, now) === "昨天");
+  check("相对时间：2 天前", formatRelativeTime(now - 2 * 24 * 3600 * 1000, now) === "2 天前");
+}
+
+// -----------------------------------------------------------------------------
+// 8. 镜像源切换 / 超时 / 缓存（注入 mock fetch 与 mock Cache Storage）
 // -----------------------------------------------------------------------------
 async function testNet() {
   console.log("== 镜像源 / 缓存测试 ==");
@@ -1157,6 +1250,7 @@ async function main() {
   await testMods();
   testGeneric();
   testCnAndFrames();
+  testHistory();
   await testNet();
 
   console.log("");
