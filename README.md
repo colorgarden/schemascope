@@ -24,7 +24,7 @@ web/
   js/icons_data.js      PUA 码点表（由 icons.properties 生成）
   js/prefetch.js        输入哈希 + 预加载管理器（可单测）
   js/cache.js           Cache Storage 持久化缓存（v2 + 规范化键 + SWR/TTL）
-  js/sources.js         Mindustry 镜像源（超时 + 自动切换 + last-good）
+  js/sources.js         Mindustry 镜像源（手动选择 + 超时 + 自动切换）
   js/zip.js             纯 JS zip 读取器（STORED/DEFLATE，可单测）
   js/mod.js             模组 zip 解析（方块/贴图/bundle，可单测）
   js/requirements.js    蓝图总耗材计算（可单测）
@@ -63,11 +63,8 @@ web/
 
 ## 二、可选：自托管贴图实现离线（推荐手机使用）
 
-默认情况下，贴图会先尝试 `assets/sprites/<名称>.png`，找不到再自动从 jsDelivr CDN 拉取：
-
-```
-https://cdn.jsdelivr.net/gh/Anuken/Mindustry@master/ + 相对路径
-```
+默认情况下，贴图会先尝试 `assets/sprites/<名称>.png`，找不到再按「镜像源」列表自动切换拉取
+（见「镜像源」小节，默认首选 `https://gh-proxy.com/https://raw.githubusercontent.com/Anuken/Mindustry/master/`）。
 
 要完全离线（首次加载更快、无网络也能用），把贴图缓存目录一并上传：
 
@@ -198,14 +195,35 @@ UI emoji → 去掉。
 - 状态栏会显示「（缓存命中 X 张）」；页脚「清除缓存」会删除所有 `msch-cache-*`
   （含旧版本）与时间戳。
 
-### 镜像源自动切换与超时（`js/sources.js`）
-- 源优先级：jsDelivr(cdn/fastly/gcore/testingcf) → githack → raw.githubusercontent。
-- 每次请求用 `AbortController` 设 **8 秒**超时；超时/失败自动切下一个源；成功的源
-  写入 `localStorage.msch-source`，后续请求优先使用。
-- 无 last-good 记录时先用小文件（`core/assets-raw/sprites/effects/error.png`，3 秒超时）
+### 镜像源（手动选择 + 自动切换 + 超时）
+
+「渲染选项」区可选择**贴图源**（默认「自动（推荐）」，选择持久化在 `localStorage.msch-source-choice`），
+也可点「检测镜像」并行探测全部源：结果显示为可点击徽章（`名称 320ms ✓` / `名称 超时 ✗`），
+点击即选用该源并自动重新加载贴图重渲染；下拉旁小字显示当前源。
+
+已实测源顺序（可靠的国内镜像最前）：
+
+| key | 显示名 | 前缀 |
+|---|---|---|
+| `gh-proxy` | gh-proxy.com（国内镜像） | `https://gh-proxy.com/https://raw.githubusercontent.com/Anuken/Mindustry/master/` |
+| `ghproxy-net` | ghproxy.net（国内镜像） | `https://ghproxy.net/https://raw.githubusercontent.com/Anuken/Mindustry/master/` |
+| `gcore` | jsDelivr Gcore | `https://gcore.jsdelivr.net/gh/Anuken/Mindustry@master/` |
+| `testingcf` | jsDelivr TestingCF | `https://testingcf.jsdelivr.net/gh/Anuken/Mindustry@master/` |
+| `cdn` | jsDelivr 官方（cdn） | `https://cdn.jsdelivr.net/gh/Anuken/Mindustry@master/` |
+| `fastly` | jsDelivr Fastly | `https://fastly.jsdelivr.net/gh/Anuken/Mindustry@master/` |
+| `raw` | GitHub Raw（直连） | `https://raw.githubusercontent.com/Anuken/Mindustry/master/` |
+
+- **为何 gh-proxy / gcore 优先**：gh-proxy / ghproxy 直接代理 raw，实测 200、0.6–2s、CORS `*`；
+  jsDelivr Gcore 即使是冷文件也 200。jsDelivr 的 `cdn`/`fastly` 对**冷文件**会
+  `301 → raw.githubusercontent`（易被墙卡住），故排在其后；`raw` 直连虽 200 但常 12s+ 抖动，作最后兜底。
+- **顺序逻辑**：`getSourceOrder()` —— 手动选择时 = `[所选源, ...其余按默认顺序]`；
+  自动时 = `[上次可用源(若有), ...默认顺序去重]`。每次请求 `AbortController` **8 秒**超时，
+  失败/超时自动切下一个源；成功的源写入 `localStorage.msch-source`。
+- 无 last-good 且未手动选择时先用小文件（`core/assets-raw/sprites/effects/error.png`，3 秒超时）
   **探测**一次，避免前 16 个并发全部各等 8 秒。
 - 发生切换时状态栏提示「下载超时，已切换镜像：<host>」。
 - 耗材面板中未命中模组的原版物品图标也使用当前可用源。
+- 缓存键为规范化相对路径（`/__sprites__/…`），切换源后命中缓存的部分无需重下。
 
 ## 八、本地预览
 

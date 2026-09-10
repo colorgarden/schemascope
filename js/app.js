@@ -19,7 +19,7 @@ import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridge
 import { setIconIndex, richText, plainTextWithIcons, itemIconSrc } from "./icons.js";
 import { simpleHash, createPrefetchManager } from "./prefetch.js";
 import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js";
-import { preferredSource, sourceHost } from "./sources.js";
+import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js";
 import { requirementsList } from "./requirements.js";
 import { BLOCK_REQUIREMENTS } from "./requirements_data.js";
 import { parseMod, modSpriteCandidates } from "./mod.js";
@@ -67,6 +67,10 @@ const els = {
   modDrop: $("mod-drop"),
   modList: $("mod-list"),
   modClear: $("mod-clear"),
+  sourceSelect: $("source-select"),
+  sourceProbe: $("source-probe"),
+  sourceCurrent: $("source-current"),
+  sourceBadges: $("source-badges"),
 };
 
 // -----------------------------------------------------------------------------
@@ -129,6 +133,7 @@ async function fetchBitmapLocal(url) {
 
 let lastSwitchNote = 0;
 function noteSourceSwitch(from, to) {
+  updateSourceCurrent(to);
   // 并发请求会同时切换，节流提示
   const now = Date.now();
   if (now - lastSwitchNote < 1500) return;
@@ -139,6 +144,76 @@ function noteSourceSwitch(from, to) {
 /** Mindustry CDN 贴图：超时 + 镜像源自动切换 + 规范化缓存。 */
 async function fetchBitmapMindustry(relPath) {
   return bitmapFromResponse(await fetchMindustryCached(relPath, { onSwitch: noteSourceSwitch }));
+}
+
+/** 当前贴图源小字显示（可传入实际使用的 url）。 */
+function updateSourceCurrent(url) {
+  if (!els.sourceCurrent) return;
+  const u = url || preferredSource();
+  const d = SOURCE_DEFS.find((x) => x.url === u);
+  els.sourceCurrent.textContent = `当前：${d ? d.label : sourceHost(u)}`;
+}
+
+/** 填充「贴图源」下拉（自动 + 7 个源），并恢复上次选择。 */
+function populateSourceSelect() {
+  if (!els.sourceSelect) return;
+  const frag = document.createDocumentFragment();
+  const auto = document.createElement("option");
+  auto.value = "";
+  auto.textContent = "自动（推荐）";
+  frag.appendChild(auto);
+  for (const d of SOURCE_DEFS) {
+    const o = document.createElement("option");
+    o.value = d.key;
+    o.textContent = d.label;
+    frag.appendChild(o);
+  }
+  els.sourceSelect.replaceChildren(frag);
+  const cur = getChoiceKey();
+  els.sourceSelect.value = SOURCE_DEFS.some((d) => d.key === cur) ? cur : "";
+}
+
+/** 高亮当前选中的徽章（key 为空表示自动）。 */
+function markActiveBadge(key) {
+  if (!els.sourceBadges) return;
+  for (const b of els.sourceBadges.querySelectorAll(".src-badge")) {
+    b.classList.toggle("active", b.dataset.key === (key || ""));
+  }
+}
+
+/** 应用手动源选择：持久化 + 刷新当前渲染。 */
+async function applySourceChoice(key) {
+  setChoiceKey(key);
+  if (els.sourceSelect) els.sourceSelect.value = key;
+  markActiveBadge(key);
+  updateSourceCurrent();
+  await refreshAfterMods();
+}
+
+/** 并行探测全部源，结果渲染为可点击徽章。 */
+async function runSourceProbe() {
+  if (!els.sourceBadges) return;
+  els.sourceBadges.replaceChildren();
+  setStatus("检测镜像中…");
+  try {
+    const results = await probeAllSources({ timeoutMs: 4000 });
+    const frag = document.createDocumentFragment();
+    for (const r of results) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "src-badge " + (r.ok ? "ok" : "bad");
+      b.dataset.key = r.key;
+      b.title = r.url;
+      b.innerHTML =
+        esc(r.label) + `<span class="src-ms">${r.ok ? r.ms + "ms ✓" : "超时 ✗"}</span>`;
+      frag.appendChild(b);
+    }
+    els.sourceBadges.replaceChildren(frag);
+    markActiveBadge(getChoiceKey());
+    setStatus("镜像检测完成（点击徽章可选用该源）。");
+  } catch (e) {
+    showError("镜像检测失败：" + e.message);
+  }
 }
 
 function bitmapToSprite(bmp) {
@@ -956,6 +1031,7 @@ async function renderCurrent(schem) {
   buildLegend(schem);
   await buildRequirements(schem);
   els.exportBtn.disabled = false;
+  updateSourceCurrent();
 
   const missing = lastMissing;
   const cacheNote = cacheInfo.hits > 0 ? `（缓存命中 ${cacheInfo.hits} 张）` : "";
@@ -982,7 +1058,7 @@ async function refreshAfterMods() {
   prefetch.invalidate();
   if (!current || !current.schem) return;
   const schem = current.schem;
-  setStatus("模组已更新，正在重新加载贴图…");
+  setStatus("正在重新加载贴图…");
   spriteCache.clear();
   try {
     lastMissing = (await loadAllSprites(collectNeeded(schem), onSpriteProgress)).missing;
@@ -1199,6 +1275,18 @@ if (els.modDrop) {
   });
 }
 
+// 贴图源：手动选择 / 检测镜像 / 徽章点击
+if (els.sourceSelect) {
+  els.sourceSelect.addEventListener("change", () => applySourceChoice(els.sourceSelect.value));
+}
+if (els.sourceProbe) els.sourceProbe.addEventListener("click", runSourceProbe);
+if (els.sourceBadges) {
+  els.sourceBadges.addEventListener("click", (e) => {
+    const b = e.target.closest(".src-badge");
+    if (b) applySourceChoice(b.dataset.key);
+  });
+}
+
 // 渲染选项
 function readOpts() {
   renderOpts.scale = Math.max(1, Math.min(4, parseInt(els.scale.value, 10) || DEFAULT_SCALE));
@@ -1321,6 +1409,9 @@ if (els.clearCache) {
   applyLayoutMode();
   await loadSpriteIndex();
   setIconIndex(spriteIndex);
+  populateSourceSelect();
+  markActiveBadge(getChoiceKey());
+  updateSourceCurrent();
   await loadCachedMods();
   // 回填上次输入并触发预加载（不自动渲染）
   const last = readLastInput();

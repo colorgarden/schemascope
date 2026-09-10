@@ -705,12 +705,61 @@ async function testNet() {
   });
 
   try {
-    const { fetchMindustry, resetProbe, SOURCES } = await import("../js/sources.js");
+    const { fetchMindustry, resetProbe, SOURCES, DEFAULT_SOURCES, SOURCE_DEFS, getSourceOrder, setChoiceKey, probeAllSources } = await import("../js/sources.js");
     const { fetchMindustryCached, spriteCacheKey, resetCacheInfo } = await import("../js/cache.js");
     const A = SOURCES[0];
     const B = SOURCES[1];
     const C = SOURCES[2];
     const D = SOURCES[3];
+
+    // ---- getSourceOrder：自动 / 手动 / last-good ----
+    localStorage.removeItem("msch-source");
+    localStorage.removeItem("msch-source-choice");
+    resetProbe();
+    check(
+      "getSourceOrder 自动（无记录）= 默认顺序",
+      JSON.stringify(getSourceOrder()) === JSON.stringify(DEFAULT_SOURCES),
+      getSourceOrder().join(",")
+    );
+    setChoiceKey("gcore");
+    const gcoreUrl = SOURCE_DEFS.find((d) => d.key === "gcore").url;
+    const ordManual = getSourceOrder();
+    check(
+      "getSourceOrder 手动选择在最前且不重复",
+      ordManual[0] === gcoreUrl &&
+        ordManual.filter((u) => u === gcoreUrl).length === 1 &&
+        ordManual.length === DEFAULT_SOURCES.length,
+      ordManual.map((u) => u.slice(0, 24)).join(" | ")
+    );
+    setChoiceKey("");
+    localStorage.setItem("msch-source", SOURCE_DEFS[2].url);
+    const ordLast = getSourceOrder();
+    check(
+      "getSourceOrder 自动含 last-good 提前",
+      ordLast[0] === SOURCE_DEFS[2].url && ordLast.length === DEFAULT_SOURCES.length,
+      ordLast[0]
+    );
+    localStorage.removeItem("msch-source");
+
+    // ---- probeAllSources：并行探测标注 ok/超时 ----
+    const probeFetch = (url, opts) => {
+      if (url.startsWith(SOURCE_DEFS[0].url)) {
+        return new Promise((_, rej) => {
+          opts.signal.addEventListener("abort", () => rej(new Error("aborted")));
+        });
+      }
+      return Promise.resolve(new Response("ok", { status: 200 }));
+    };
+    const pr = await probeAllSources({ defs: SOURCE_DEFS.slice(0, 2), timeoutMs: 30, fetchImpl: probeFetch });
+    check(
+      "probeAllSources 正确标注 超时/成功 与耗时",
+      pr.length === 2 &&
+        pr[0].ok === false &&
+        pr[1].ok === true &&
+        typeof pr[0].ms === "number" &&
+        typeof pr[1].ms === "number",
+      JSON.stringify(pr.map((r) => [r.key, r.ok, r.ms]))
+    );
 
     // ---- 源切换顺序 + last-good 记忆 ----
     resetProbe();
