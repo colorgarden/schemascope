@@ -594,7 +594,7 @@ async function testMods() {
     setModBridges(new Map([["饱和火力-裂位传送塔", { range: tower.range, width: tower.bridgeWidth }]]));
     check("注册后：相距 30 格配对成功（range 36）", bridgePairs([mkE(0, 0), mkE(30, 0)]).length === 1, `pairs=${bridgePairs([mkE(0, 0), mkE(30, 0)]).length}`);
     check("注册后：相距 40 格不配对", bridgePairs([mkE(0, 0), mkE(40, 0)]).length === 0, `pairs=${bridgePairs([mkE(0, 0), mkE(40, 0)]).length}`);
-    check("模组桥带宽度 = round(24*8/6.5) = 30", bridgeWidthOf("饱和火力-裂位传送塔") === 30, `w=${bridgeWidthOf("饱和火力-裂位传送塔")}`);
+    check("模组桥带宽度与原版一致 = 24", bridgeWidthOf("饱和火力-裂位传送塔") === 24, `w=${bridgeWidthOf("饱和火力-裂位传送塔")}`);
     setModBridges(new Map());
 
     // ---- 运行时注册：模组质驱描边 ----

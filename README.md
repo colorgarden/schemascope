@@ -159,7 +159,7 @@ UI emoji → 去掉。
 - **桥 / 质驱按 JSON `type` 判定**（不硬编码名字）：
   - 桥：`type` 以 `Bridge` 结尾（`ItemBridge`/`LiquidBridge`/`BufferedItemBridge`/`DirectionalBridge` 等），
     采集 `<block>-bridge` / `<block>-arrow` 贴图并画连接线与箭头；配对范围取模组 `range`
-    （否则 vanilla 值，再否则 4）；桥带宽度按 `bridgeWidth` 与 24px/6.5 等比换算。
+    （否则 vanilla 值，再否则 4）；桥带宽度**统一与原版一致**（不按模组 `bridgeWidth` 放大）。
   - 质量驱动器：`type === "MassDriver"`（或以之结尾），按 vanilla 规则套用描边；`outlineIcon===false`
     不描边，颜色取 `outlineColor`（支持 `#rrggbb`/`rrggbb`）否则 `#404049`，半径取 `outlineRadius` 否则 4。
   - 电力目标：模组方块 `hasPower===true` 或含 `consumes.power`，以及模组质驱，均可被电力节点连线。

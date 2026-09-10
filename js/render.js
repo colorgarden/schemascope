@@ -87,10 +87,8 @@ export function bridgeRangeOf(name) {
 
 /** 桥带宽度：模组 bridgeWidth 按 24px/6.5 等比，否则全局 24。 */
 export function bridgeWidthOf(name) {
-  const m = MOD_BRIDGES.get(name);
-  if (m && m.width !== undefined && m.width !== null) {
-    return Math.round((BRIDGE_WIDTH * m.width) / 6.5);
-  }
+  // 所有桥（含模组桥）统一使用与原版一致的桥带宽度（BRIDGE_WIDTH），
+  // 不做按 bridgeWidth 字段的等比放宽。
   return BRIDGE_WIDTH;
 }
 

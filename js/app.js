@@ -200,7 +200,7 @@ function rebuildModDerived() {
 
       // 桥：type 以 Bridge 结尾（ItemBridge/LiquidBridge/…）
       if (isBridgeType(def.type)) {
-        const info = { range: def.range, width: def.bridgeWidth };
+        const info = { range: def.range }; // 宽度统一用原版 BRIDGE_WIDTH
         bridgeMap.set(key, info);
         if (!bridgeMap.has(def.base)) bridgeMap.set(def.base, info);
         modBridgeNames.add(key);
