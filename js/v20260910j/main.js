@@ -22,11 +22,11 @@ import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, p
 import { requirementsList } from "./requirements.js";
 import { BLOCK_REQUIREMENTS } from "./requirements_data.js";
 import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js";
-import { blockDisplayName as resolveBlockDisplayName } from "./names.js";
+import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js";
 import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260910i";
+const APP_VERSION = "20260910j";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -592,6 +592,11 @@ function findAuthor(schem) {
 /** 方块显示名：模组语言文件 > 模组 JSON name > 内置 BLOCK_CN > 内部名。 */
 function blockDisplayName(name) {
   return resolveBlockDisplayName(name, mods);
+}
+
+/** 贴图名 → 中文显示名（供「贴图缺失」提示）。 */
+function spriteDisplayName(name) {
+  return resolveSpriteDisplayName(name, mods);
 }
 
 function collectLegend(schem) {
@@ -1163,7 +1168,16 @@ async function renderCurrent(schem) {
   }
   const warns = [];
   if (missing.length) {
-    warns.push(`贴图缺失：${missing.slice(0, 6).join("、")}${missing.length > 6 ? "…" : ""}`);
+    const names = [];
+    const seenM = new Set();
+    for (const nm of missing) {
+      const disp = spriteDisplayName(nm);
+      if (!seenM.has(disp)) {
+        seenM.add(disp);
+        names.push(disp);
+      }
+    }
+    warns.push(`贴图缺失：${names.slice(0, 6).join("、")}${names.length > 6 ? "…" : ""}`);
   }
   if (unknown.length) {
     const names = unknown.map((b) => blockDisplayName(b));

@@ -11,7 +11,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 
-import { parseSchematic, extractLogic, isProcessor, bytesToBase64, isTextBlueprint, parseContentMap, FALLBACK_BLOCKS, LEGACY_BLOCKS } from "../js/parser.js";
+import { parseSchematic, extractLogic, isProcessor, bytesToBase64, isTextBlueprint, parseContentMap, FALLBACK_BLOCKS, LEGACY_BLOCKS } from "../js/v20260910j/parser.js";
 import {
   computeLayout,
   tileFootprint,
@@ -34,17 +34,17 @@ import {
   setModPowerNodes,
   setModLayers,
   nodeLaserOpts,
-} from "../js/render.js";
-import { blockDisplayName, modNameCandidates } from "../js/names.js";
-import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN, CONTENT_COLORS, CONFIG_UNDERLAY, CONFIG_OVERLAY } from "../js/data.js";
-import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, ICON_FONT_LO } from "../js/icons.js";
-import { ICON_BY_CODE, ICON_LOCAL_CODES } from "../js/icons_data.js";
-import { simpleHash, createPrefetchManager } from "../js/prefetch.js";
-import { computeRequirements, requirementsList } from "../js/requirements.js";
-import { BLOCK_REQUIREMENTS } from "../js/requirements_data.js";
-import { openZip } from "../js/zip.js";
-import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers, looseJson, parseRequirements } from "../js/mod.js";
-import { CN_BLOCKS } from "../js/cn_data.js";
+} from "../js/v20260910j/render.js";
+import { blockDisplayName, modNameCandidates, spriteDisplayName } from "../js/v20260910j/names.js";
+import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN, CONTENT_COLORS, CONFIG_UNDERLAY, CONFIG_OVERLAY } from "../js/v20260910j/data.js";
+import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, ICON_FONT_LO } from "../js/v20260910j/icons.js";
+import { ICON_BY_CODE, ICON_LOCAL_CODES } from "../js/v20260910j/icons_data.js";
+import { simpleHash, createPrefetchManager } from "../js/v20260910j/prefetch.js";
+import { computeRequirements, requirementsList } from "../js/v20260910j/requirements.js";
+import { BLOCK_REQUIREMENTS } from "../js/v20260910j/requirements_data.js";
+import { openZip } from "../js/v20260910j/zip.js";
+import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers, looseJson, parseRequirements } from "../js/v20260910j/mod.js";
+import { CN_BLOCKS } from "../js/v20260910j/cn_data.js";
 import {
   HISTORY_KEY,
   HISTORY_MAX_ITEMS,
@@ -55,7 +55,7 @@ import {
   saveHistory,
   loadHistory,
   formatRelativeTime,
-} from "../js/history.js";
+} from "../js/v20260910j/history.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -931,6 +931,26 @@ function testCnAndFrames() {
 }
 
 // -----------------------------------------------------------------------------
+// 6d. 贴图名 → 显示名（贴图缺失提示用）
+// -----------------------------------------------------------------------------
+function testSpriteNames() {
+  console.log("== 贴图名 → 显示名测试 ==");
+  check("spriteDisplayName 方块本身", spriteDisplayName("silicon-smelter", []) === "硅冶炼厂", spriteDisplayName("silicon-smelter", []));
+  check("spriteDisplayName 剥 -top", spriteDisplayName("silicon-smelter-top", []) === "硅冶炼厂", spriteDisplayName("silicon-smelter-top", []));
+  check("spriteDisplayName 剥 -rotator", spriteDisplayName("mechanical-drill-rotator", []) === "机械钻头", spriteDisplayName("mechanical-drill-rotator", []));
+  check("spriteDisplayName 剥 -center", spriteDisplayName("unloader-center", []) === "装卸器", spriteDisplayName("unloader-center", []));
+  check("spriteDisplayName 剥 -bottom", spriteDisplayName("liquid-tank-bottom", []) === "流体储罐", spriteDisplayName("liquid-tank-bottom", []));
+  check("spriteDisplayName 剥 -数字", spriteDisplayName("duct-top-2", []) === "物品管道", spriteDisplayName("duct-top-2", []));
+  check("spriteDisplayName 未知原样", spriteDisplayName("some-unknown-sprite", []) === "some-unknown-sprite", spriteDisplayName("some-unknown-sprite", []));
+  const fakeMod = {
+    name: "测试A",
+    bundle: new Map([["block.测试A-星河桥.name", "星河大桥"]]),
+    blocks: new Map([["测试A-星河桥", { name: "星河大桥" }]]),
+  };
+  check("spriteDisplayName 模组层剥离", spriteDisplayName("测试A-星河桥-top", [fakeMod]) === "星河大桥", spriteDisplayName("测试A-星河桥-top", [fakeMod]));
+}
+
+// -----------------------------------------------------------------------------
 // 7. 本地历史记录（纯函数 + mock storage）
 // -----------------------------------------------------------------------------
 function testHistory() {
@@ -1443,8 +1463,8 @@ async function testNet() {
   });
 
   try {
-    const { fetchMindustry, resetProbe, SOURCES, DEFAULT_SOURCES, SOURCE_DEFS, getSourceOrder, setChoiceKey, probeAllSources } = await import("../js/sources.js");
-    const { fetchMindustryCached, spriteCacheKey, resetCacheInfo } = await import("../js/cache.js");
+    const { fetchMindustry, resetProbe, SOURCES, DEFAULT_SOURCES, SOURCE_DEFS, getSourceOrder, setChoiceKey, probeAllSources } = await import("../js/v20260910j/sources.js");
+    const { fetchMindustryCached, spriteCacheKey, resetCacheInfo } = await import("../js/v20260910j/cache.js");
     const A = SOURCES[0];
     const B = SOURCES[1];
     const C = SOURCES[2];
@@ -1622,6 +1642,7 @@ async function main() {
   await testMods();
   testGeneric();
   testCnAndFrames();
+  testSpriteNames();
   testHistory();
   await testFileInput();
   testConfigRender();
