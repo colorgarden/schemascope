@@ -176,7 +176,8 @@ function makeLazySpriteMap(zip, entriesMap, stats, fallbackMaps = []) {
  * @param {string} fileName
  * @returns {Promise<{name,displayName,blocks:Map,sprites,spritesOverride,bundle:Map,fileName,spriteStats}>}
  *   blocks: Map(内部名/base → {base,size,name,requirements,type,range,bridgeWidth,
- *            hasPower,outlineIcon,outlineColor,outlineRadius,rotate,consumesPower})
+ *            hasPower,outlineIcon,outlineColor,outlineRadius,rotate,consumesPower,
+ *            laserRange,laserScale,laserColor1,laserColor2,maxNodes})
  *   sprites: 懒解压贴图表（basename 索引，sprites-override 已覆盖）；
  *            `size`/`has`/`keys` 为条目数，`get(name)` 按需解压返回 Blob
  *   spritesOverride: 懒解压表（仅 sprites-override/**）
@@ -227,6 +228,12 @@ export async function parseMod(input, fileName = "mod.zip") {
       outlineRadius: obj.outlineRadius !== undefined ? Number(obj.outlineRadius) : undefined,
       rotate: obj.rotate !== undefined ? !!obj.rotate : undefined,
       consumesPower: !!(obj.consumes && obj.consumes.power !== undefined),
+      // 电力节点激光参数（缺失记 undefined）
+      laserRange: obj.laserRange !== undefined ? Number(obj.laserRange) : undefined,
+      laserScale: obj.laserScale !== undefined ? Number(obj.laserScale) : undefined,
+      laserColor1: obj.laserColor1 !== undefined ? String(obj.laserColor1) : undefined,
+      laserColor2: obj.laserColor2 !== undefined ? String(obj.laserColor2) : undefined,
+      maxNodes: obj.maxNodes !== undefined ? Number(obj.maxNodes) : undefined,
     };
     const internal = name + "-" + base;
     blocks.set(internal, def);

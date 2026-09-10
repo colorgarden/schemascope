@@ -38,6 +38,8 @@ let MOD_BRIDGES = new Map();
 let MOD_OUTLINE = new Map();
 // 模组电力目标：可作为电力节点连线目标的方块名
 let MOD_POWER_BLOCKS = new Set();
+// 模组电力节点来源（type 以 "PowerNode" 结尾）：name -> { scale, color1, color2 }
+let MOD_POWER_NODES = new Map();
 
 function toMap(v) {
   if (v instanceof Map) return v;
@@ -61,6 +63,37 @@ export function setModOutline(map) {
 /** 注册模组电力方块集合（Set 或数组）。 */
 export function setModPowerBlocks(set) {
   MOD_POWER_BLOCKS = toSet(set);
+}
+
+/** 注册模组电力节点：Map(name -> { scale?, color1?, color2? })。 */
+export function setModPowerNodes(map) {
+  MOD_POWER_NODES = toMap(map);
+}
+
+/** 电力节点类型判定：type 以 "PowerNode" 结尾（PowerNode / LongPowerNode 等）。 */
+export function isPowerNodeType(type) {
+  return typeof type === "string" && type.length > 0 && type.endsWith("PowerNode");
+}
+
+/** 解析颜色：支持 "#rrggbb" / "rrggbb" / [r,g,b] / 数字；失败返回 null。 */
+export function parseColor(v) {
+  if (v == null) return null;
+  if (Array.isArray(v) && v.length >= 3) return [Number(v[0]) & 255, Number(v[1]) & 255, Number(v[2]) & 255];
+  if (typeof v === "number") return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+  const s = String(v).trim().replace(/^#/, "");
+  const m = /^([0-9a-fA-F]{6})$/.exec(s);
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** 颜色插值 lerp(a,b,t)，t=0.1 → 约接近 a。 */
+function lerpColor(a, b, t) {
+  return [
+    Math.round(a[0] + (b[0] - a[0]) * t),
+    Math.round(a[1] + (b[1] - a[1]) * t),
+    Math.round(a[2] + (b[2] - a[2]) * t),
+  ];
 }
 
 /** 桥类型判定：type 以 "Bridge" 结尾（ItemBridge/LiquidBridge/BufferedItemBridge/DirectionalBridge 等）。 */
@@ -555,8 +588,9 @@ export function drawCenterConfig(buf, cw, ch, tile, cx, cy, sprites) {
   }
 }
 
-/** 一根电力节点激光（对应 _draw_node_laser）。alphaScale 可覆盖默认透明度。 */
-export function drawNodeLaser(buf, cw, ch, x1, y1, size1, x2, y2, size2, sprites, alphaScale = POWER_LASER_ALPHA) {
+/** 一根电力节点激光（对应 _draw_node_laser）。
+ * alphaScale 覆盖默认透明度；opts 可覆盖 { width, capScale, color }（缺省用现有常量）。 */
+export function drawNodeLaser(buf, cw, ch, x1, y1, size1, x2, y2, size2, sprites, alphaScale = POWER_LASER_ALPHA, opts = {}) {
   const dx = x2 - x1;
   const dy = y2 - y1;
   const length = Math.hypot(dx, dy);
@@ -573,18 +607,34 @@ export function drawNodeLaser(buf, cw, ch, x1, y1, size1, x2, y2, size2, sprites
   const l1y = y1 + uy * (len1 + 2);
   const l2x = x2 - ux * (len2 + 2);
   const l2y = y2 - uy * (len2 + 2);
-  const color = POWER_LASER_COLOR;
+  const width = opts.width !== undefined ? opts.width : POWER_LASER_WIDTH;
+  const capScale = opts.capScale !== undefined ? opts.capScale : POWER_LASER_SCALE;
+  const color = opts.color || POWER_LASER_COLOR;
   const ang = (180 / Math.PI) * Math.atan2(dy, dx);
 
   const beam = getSprite(sprites, "laser", true);
   if (beam) {
-    drawBeam(buf, cw, ch, l1x, l1y, l2x, l2y, beam.rgba, beam.w, beam.h, POWER_LASER_WIDTH, color, alphaScale);
+    drawBeam(buf, cw, ch, l1x, l1y, l2x, l2y, beam.rgba, beam.w, beam.h, width, color, alphaScale);
   }
   const end = getSprite(sprites, "laser-end", true);
   if (end) {
-    blitRotated(buf, cw, ch, end.rgba, end.w, end.h, e1x, e1y, POWER_LASER_SCALE, ang + 180, color, alphaScale);
-    blitRotated(buf, cw, ch, end.rgba, end.w, end.h, e2x, e2y, POWER_LASER_SCALE, ang, color, alphaScale);
+    blitRotated(buf, cw, ch, end.rgba, end.w, end.h, e1x, e1y, capScale, ang + 180, color, alphaScale);
+    blitRotated(buf, cw, ch, end.rgba, end.w, end.h, e2x, e2y, capScale, ang, color, alphaScale);
   }
+}
+
+/** 由模组节点参数（scale/color1/color2）计算 drawNodeLaser 的 opts。 */
+function nodeLaserOpts(name) {
+  const ni = MOD_POWER_NODES.get(name);
+  if (!ni) return {}; // vanilla：沿用现有常量
+  const scale = ni.scale !== undefined && ni.scale !== null ? ni.scale : 0.25;
+  const c1 = parseColor(ni.color1) || [255, 255, 255];
+  const c2 = parseColor(ni.color2) || [217, 247, 178];
+  return {
+    width: Math.round((POWER_LASER_WIDTH * scale) / 0.25),
+    capScale: scale,
+    color: lerpColor(c1, c2, 0.1),
+  };
 }
 
 /** 第二遍：所有电力节点连线激光（对应 _draw_power_lasers）。laserAlpha 可覆盖默认透明度。 */
@@ -592,22 +642,25 @@ export function drawPowerLasers(buf, cw, ch, layout, sprites, laserAlpha = POWER
   const lookup = new Map();
   for (const e of layout.entries) lookup.set(`${e.tile.x},${e.tile.y}`, e);
 
+  const isNode = (b) =>
+    b === "power-node" || b === "power-node-large" || b === "surge-tower" || MOD_POWER_NODES.has(b);
+
   for (const e of layout.entries) {
     const t = e.tile;
-    if (!(t.block === "power-node" || t.block === "power-node-large" || t.block === "surge-tower")) {
-      continue;
-    }
+    if (!isNode(t.block)) continue;
     if (t.config_type !== "point2Array" || !t.config) continue;
     const sx = e.px + (e.size * TILE) / 2.0;
     const sy = e.py + (e.size * TILE) / 2.0;
+    const opts = nodeLaserOpts(t.block);
     for (const off of t.config) {
       const [ox, oy] = off;
       const te = lookup.get(`${t.x + ox},${t.y + oy}`);
       if (!te) continue;
-      if (!(POWER_BLOCKS.has(te.tile.block) || MOD_POWER_BLOCKS.has(te.tile.block))) continue;
+      const tb = te.tile.block;
+      if (!(POWER_BLOCKS.has(tb) || MOD_POWER_BLOCKS.has(tb) || MOD_POWER_NODES.has(tb))) continue;
       const tx = te.px + (te.size * TILE) / 2.0;
       const ty = te.py + (te.size * TILE) / 2.0;
-      drawNodeLaser(buf, cw, ch, sx, sy, e.size, tx, ty, te.size, sprites, laserAlpha);
+      drawNodeLaser(buf, cw, ch, sx, sy, e.size, tx, ty, te.size, sprites, laserAlpha, opts);
     }
   }
 }

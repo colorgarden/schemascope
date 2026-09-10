@@ -23,9 +23,11 @@ import {
   makePlaceholder,
   isBridgeType,
   isMassDriverType,
+  isPowerNodeType,
   setModBridges,
   setModOutline,
   setModPowerBlocks,
+  setModPowerNodes,
 } from "../js/render.js";
 import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN } from "../js/data.js";
 import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, ICON_FONT_LO } from "../js/icons.js";
@@ -577,6 +579,10 @@ async function testMods() {
       [...m.blocks.values()].every((d) => !isBridgeType(d.type)),
       [...new Set([...m.blocks.values()].map((d) => d.type))].join(",")
     );
+    check(
+      "67科技 无 PowerNode",
+      [...m.blocks.values()].every((d) => !isPowerNodeType(d.type))
+    );
     // 懒解压：解析阶段不读贴图字节，首次 get 才解压且缓存
     check("67科技 懒加载：解析后未解压贴图", m.spriteStats.reads === 0, `reads=${m.spriteStats.reads}`);
     const k67 = [...m.sprites.keys()][0];
@@ -697,6 +703,71 @@ async function testMods() {
       [rOut.rgba[px], rOut.rgba[px + 1], rOut.rgba[px + 2]].join(",")
     );
     setModOutline(new Map());
+
+    // ---- 模组电力节点（type=PowerNode）----
+    const node1 = m.blocks.get("饱和火力-裂位节点");
+    const node2 = m.blocks.get("饱和火力-装甲节点");
+    const node3 = m.blocks.get("饱和火力-高压电");
+    check("裂位节点 type=PowerNode", !!node1 && isPowerNodeType(node1.type), node1 && node1.type);
+    check("裂位节点 scale=0.4 / color1=FFF2D6", !!node1 && node1.laserScale === 0.4 && node1.laserColor1 === "FFF2D6", node1 && `${node1.laserScale}/${node1.laserColor1}`);
+    check("装甲节点 scale=0.5 / color2=5f6a89", !!node2 && node2.laserScale === 0.5 && node2.laserColor2 === "5f6a89", node2 && `${node2.laserScale}/${node2.laserColor2}`);
+    check("高压电 laserRange=80", !!node3 && node3.laserRange === 80, node3 && node3.laserRange);
+
+    const nw = TILE;
+    const nbase = new Uint8ClampedArray(nw * nw * 4).fill(255);
+    const nsp = () => ({ w: nw, h: nw, size: 1, rgba: new Uint8ClampedArray(nbase), placeholder: false });
+
+    // 两个模组节点（相距 3 格）→ 电线宽度 10、颜色偏暖
+    setModPowerNodes(new Map([["饱和火力-裂位节点", { scale: node1.laserScale, color1: node1.laserColor1, color2: node1.laserColor2 }]]));
+    const msp = { "饱和火力-裂位节点": nsp(), laser: nsp(), "laser-end": nsp() };
+    const mschem = {
+      width: 4,
+      height: 1,
+      tiles: [
+        { block: "饱和火力-裂位节点", x: 0, y: 0, rot: 0, config_type: "point2Array", config: [[3, 0]] },
+        { block: "饱和火力-裂位节点", x: 3, y: 0, rot: 0, config_type: "point2Array", config: [[-3, 0]] },
+      ],
+    };
+    const mres = renderSchematic(mschem, msp, { scale: 1, pad: 0, transparent: true, grid: false });
+    const mcw = 4 * TILE; // 128；节点中心 x16/x112 → 中点 x64，中心 y16
+    const mpx = (16 * mcw + 64) * 4;
+    check(
+      "模组节点电线存在且颜色偏暖（r>b）",
+      mres.rgba[mpx] > 0 && mres.rgba[mpx] - mres.rgba[mpx + 2] > 20,
+      `r=${mres.rgba[mpx]} b=${mres.rgba[mpx + 2]}`
+    );
+    check(
+      "模组节点电线宽度≈10（y20 有 / y23 无）",
+      mres.rgba[(20 * mcw + 64) * 4] > 0 && mres.rgba[(23 * mcw + 64) * 4] === 0,
+      `y20=${mres.rgba[(20 * mcw + 64) * 4]} y23=${mres.rgba[(23 * mcw + 64) * 4]}`
+    );
+    setModPowerNodes(new Map());
+
+    // vanilla 回归：power-node → battery，宽度 6、颜色近白
+    const vsp = { "power-node": nsp(), battery: nsp(), laser: nsp(), "laser-end": nsp() };
+    const vschem = {
+      width: 3,
+      height: 1,
+      tiles: [
+        { block: "power-node", x: 0, y: 0, rot: 0, config_type: "point2Array", config: [[2, 0]] },
+        { block: "battery", x: 2, y: 0, rot: 0, config_type: "null", config: null },
+      ],
+    };
+    const vres = renderSchematic(vschem, vsp, { scale: 1, pad: 0, transparent: true, grid: false });
+    const vcw = 3 * TILE; // 96；中心 x16/x80 → 中点 x48
+    const vpx = (16 * vcw + 48) * 4;
+    check(
+      "vanilla 节点电线颜色近白（r≈b）",
+      vres.rgba[vpx] > 200 && vres.rgba[vpx + 1] > 200 && vres.rgba[vpx + 2] > 200 && Math.abs(vres.rgba[vpx] - vres.rgba[vpx + 2]) < 15,
+      `rgb=${vres.rgba[vpx]},${vres.rgba[vpx + 1]},${vres.rgba[vpx + 2]}`
+    );
+    check(
+      "vanilla 节点电线宽度≈6（y18 有 / y20 无）",
+      vres.rgba[(18 * vcw + 48) * 4] > 0 && vres.rgba[(20 * vcw + 48) * 4] === 0,
+      `y18=${vres.rgba[(18 * vcw + 48) * 4]} y20=${vres.rgba[(20 * vcw + 48) * 4]}`
+    );
+
+    setModPowerNodes(new Map());
     setModPowerBlocks(new Set());
   }
 }

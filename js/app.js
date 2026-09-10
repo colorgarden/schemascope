@@ -15,7 +15,7 @@ import {
   DEFAULT_PAD,
 } from "./data.js";
 import { parseSchematic, extractLogic, isProcessor } from "./parser.js";
-import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, isBridgeType, isMassDriverType } from "./render.js";
+import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js";
 import { setIconIndex, richText, plainTextWithIcons, itemIconSrc } from "./icons.js";
 import { simpleHash, createPrefetchManager } from "./prefetch.js";
 import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js";
@@ -264,6 +264,7 @@ function rebuildModDerived() {
   modBridgeNames = new Set();
   const bridgeMap = new Map(); // name -> { range, width }
   const outlineMap = new Map(); // name -> [[r,g,b], radius]
+  const powerNodesMap = new Map(); // name -> { scale, color1, color2 }
   const powerSet = new Set();
 
   for (const m of mods) {
@@ -307,6 +308,19 @@ function rebuildModDerived() {
         powerSet.add(key);
         powerSet.add(def.base);
       }
+
+      // 电力节点：type 以 PowerNode 结尾 → 注册激光参数 + 作为可连目标
+      if (isPowerNodeType(def.type)) {
+        const info = {
+          scale: def.laserScale,
+          color1: def.laserColor1,
+          color2: def.laserColor2,
+        };
+        powerNodesMap.set(key, info);
+        if (!powerNodesMap.has(def.base)) powerNodesMap.set(def.base, info);
+        powerSet.add(key);
+        powerSet.add(def.base);
+      }
     }
     // bundle
     for (const [k, v] of m.bundle) modBundle.set(k, v);
@@ -335,6 +349,7 @@ function rebuildModDerived() {
   setModBridges(bridgeMap);
   setModOutline(outlineMap);
   setModPowerBlocks(powerSet);
+  setModPowerNodes(powerNodesMap);
 }
 
 /** 模组 sprites-override 贴图（懒解压）。 */
