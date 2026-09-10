@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<!-- 发布提示：每次发布请递增版本号 VER；把整个 js 目录移动到新版本路径 js/v<VER>/（入口为 main.js）；同步更新本文件、test/parse_test.mjs、README 的引用与 ?v=、页脚版本由 JS 注入 -->
+<!-- VER: 20260910j -->
+<html lang="zh-CN">
+<!-- 版本化入口页：给被旧缓存粘死的浏览器一个全新 URL（资源经 <base> 指回仓库根） -->
+<head>
+<base href="../">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mindustry 蓝图解析 · 渲染工具</title>
+<link rel="stylesheet" href="css/style.css?v=20260910j">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Mindustry 蓝图 <span class="sub">解析 · 渲染 · 逻辑提取</span></h1>
+    <p class="lead">粘贴 Base64 或选择 .msch / .txt 蓝图，浏览器内即时渲染并可导出 PNG。</p>
+  </header>
+
+  <div id="error" class="error" role="alert"></div>
+
+  <main class="layout">
+    <div class="col-left">
+      <section class="panel panel-input">
+        <div class="section-title">输入蓝图</div>
+        <div id="drop" class="drop">
+          <textarea id="input-text" spellcheck="false" placeholder="在此粘贴蓝图 Base64 文本（以 bXNja 开头）…"></textarea>
+          <div class="drop-hint">也可以把 .txt / .msch 文件拖到这里</div>
+        </div>
+        <div class="row">
+          <label class="file-btn">
+            选择文件
+            <input id="file-input" type="file" accept=".txt,.msch,text/plain,application/octet-stream" hidden>
+          </label>
+          <button id="parse-btn" class="btn primary">解析并渲染</button>
+        </div>
+        <span id="input-source" class="input-source" hidden></span>
+      </section>
+
+      <section class="panel panel-history" id="history-wrap">
+        <div class="section-title history-title">
+          <span>历史记录</span>
+          <button id="history-clear" class="link-btn" type="button">清空</button>
+        </div>
+        <div id="history-list" class="history-list"></div>
+      </section>
+
+      <section class="panel panel-mod">
+        <div class="section-title">模组</div>
+        <div class="row mod-row">
+          <label class="file-btn">
+            添加模组（.zip / .jar）
+            <input id="mod-input" type="file" accept=".zip,.jar,application/zip,application/java-archive" multiple hidden>
+          </label>
+          <button id="mod-clear" class="btn ghost">清除全部模组</button>
+        </div>
+        <div id="mod-drop" class="mod-drop">把模组 .zip / .jar 拖到这里（支持 JSON / 混合模组）</div>
+        <div id="mod-list" class="mod-list"></div>
+      </section>
+
+      <section class="panel panel-options">
+        <div class="section-title">渲染选项</div>
+        <div class="controls">
+          <label class="ctl">
+            <span>放大倍数</span>
+            <select id="scale">
+              <option value="1">1×</option>
+              <option value="2" selected>2×</option>
+              <option value="3">3×</option>
+              <option value="4">4×</option>
+            </select>
+          </label>
+          <label class="ctl">
+            <span>背景</span>
+            <select id="bg-mode">
+              <option value="opaque" selected>原版蓝图背景</option>
+              <option value="transparent">透明</option>
+            </select>
+          </label>
+          <label class="ctl check">
+            <input id="grid" type="checkbox">
+            <span>显示网格</span>
+          </label>
+          <button id="export-btn" class="btn accent" disabled>导出 PNG</button>
+        </div>
+        <div class="opacity-row">
+          <label class="ctl range-ctl">
+            <span>电线透明度</span>
+            <input id="laser-alpha" type="range" min="0" max="100" step="1" value="100">
+            <span id="laser-alpha-val" class="range-val">100%</span>
+          </label>
+          <label class="ctl range-ctl">
+            <span>桥透明度</span>
+            <input id="bridge-opacity" type="range" min="0" max="100" step="1" value="50">
+            <span id="bridge-opacity-val" class="range-val">50%</span>
+          </label>
+        </div>
+        <div class="source-row">
+          <label class="ctl">
+            <span>贴图源</span>
+            <select id="source-select"></select>
+          </label>
+          <button id="source-probe" class="btn ghost">检测镜像</button>
+          <span id="source-current" class="source-current"></span>
+        </div>
+        <div id="source-badges" class="source-badges"></div>
+      </section>
+
+      <section id="procs-wrap" class="panel panel-procs" style="display:none">
+        <div class="section-title">逻辑处理器</div>
+        <div id="procs" class="procs"></div>
+      </section>
+    </div>
+
+    <div class="col-right">
+      <section class="panel meta-panel">
+        <div class="meta">
+          <span>名称：<b id="meta-name">—</b></span>
+          <span>作者：<b id="meta-author">—</b></span>
+          <span>尺寸：<b id="meta-size">—</b></span>
+          <span>方块：<b id="meta-count">—</b></span>
+          <span>处理器：<b id="meta-proc">—</b></span>
+        </div>
+        <div id="labels-wrap" class="labels" style="display:none">
+          <span class="labels-title">标签</span>
+          <span id="labels"></span>
+        </div>
+      </section>
+
+      <section id="req-wrap" class="panel panel-req" style="display:none">
+        <div class="section-title">耗材</div>
+        <div id="requirements" class="requirements"></div>
+      </section>
+
+      <div id="status" class="status"></div>
+
+      <section class="panel panel-render">
+        <div class="section-title">蓝图渲染</div>
+        <div id="stage" class="stage">
+          <div id="stage-fit" class="stage-fit">
+            <canvas id="canvas" width="0" height="0"></canvas>
+            <div id="spots"></div>
+          </div>
+        </div>
+        <p class="hint">点击处理器 / 信息板查看代码或文本；悬停方块查看名称、坐标与配置。</p>
+      </section>
+
+      <section class="panel panel-legend">
+        <div class="section-title">图例</div>
+        <div id="legend" class="legend"></div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <p>纯前端静态工具 · 贴图来自 Mindustry（jsDelivr CDN 或本地自托管）· 无后端、无构建步骤</p>
+    <p class="footer-links">
+      <a href="https://github.com/colorgarden/schemascope" target="_blank" rel="noopener" class="footer-link">
+        <svg class="gh-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="currentColor">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+        GitHub 仓库
+      </a>
+      <a href="#" id="clear-cache" class="clear-cache footer-link" title="清除贴图/模组缓存并强制重新加载页面">清除缓存</a>
+      <span class="footer-ver" id="footer-ver"></span>
+    </p>
+  </footer>
+</div>
+
+<div id="tip"></div>
+
+<div id="overlay" class="overlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modal-head">
+      <span class="t" id="modal-title">处理器</span>
+      <button class="x" id="modal-x" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-body"><pre id="modal-pre"></pre></div>
+    <div class="modal-foot">
+      <button class="copy" id="copy-btn">复制</button>
+      <span class="copy-ok" id="copy-ok">已复制</span>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="js/v20260910j/main.js?v=20260910j"></script>
+</body>
+</html>
