@@ -624,7 +624,7 @@ export function drawNodeLaser(buf, cw, ch, x1, y1, size1, x2, y2, size2, sprites
 }
 
 /** 由模组节点参数（scale/color1/color2）计算 drawNodeLaser 的 opts。 */
-function nodeLaserOpts(name) {
+export function nodeLaserOpts(name) {
   const ni = MOD_POWER_NODES.get(name);
   if (!ni) return {}; // vanilla：沿用现有常量
   const scale = ni.scale !== undefined && ni.scale !== null ? ni.scale : 0.25;

@@ -17,6 +17,7 @@ import {
   dilateAlpha,
   bridgePairs,
   bridgeWidthOf,
+  bridgeRangeOf,
   drawBeam,
   renderSchematic,
   drawGrid,
@@ -28,7 +29,9 @@ import {
   setModOutline,
   setModPowerBlocks,
   setModPowerNodes,
+  nodeLaserOpts,
 } from "../js/render.js";
+import { blockDisplayName, modNameCandidates } from "../js/names.js";
 import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN } from "../js/data.js";
 import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, ICON_FONT_LO } from "../js/icons.js";
 import { ICON_BY_CODE, ICON_LOCAL_CODES } from "../js/icons_data.js";
@@ -602,6 +605,12 @@ async function testMods() {
         JSON.stringify(pump.requirements)
       );
     }
+    // 显示名：67科技无 bundle → 回退 JSON name
+    check(
+      "显示名 67：无 bundle 回退 JSON name",
+      blockDisplayName("无限-便携式抽水机", [m]) === "便携式抽水机",
+      blockDisplayName("无限-便携式抽水机", [m])
+    );
   }
 
   // ---- 饱和火力 ----
@@ -769,6 +778,13 @@ async function testMods() {
 
     setModPowerNodes(new Map());
     setModPowerBlocks(new Set());
+
+    // 显示名：饱和火力 bundle 优先
+    check(
+      "显示名 饱和火力：bundle 优先（拓断）",
+      blockDisplayName("饱和火力-拓断", [m]) === "拓断",
+      blockDisplayName("饱和火力-拓断", [m])
+    );
   }
 }
 
@@ -777,6 +793,81 @@ function modBlockCount(m) {
   const p = m.name + "-";
   for (const k of m.blocks.keys()) if (k.startsWith(p)) n++;
   return n;
+}
+
+// -----------------------------------------------------------------------------
+// 6b. 通用适配性（合成模组，证明不硬编码任何真实模组）
+// -----------------------------------------------------------------------------
+function testGeneric() {
+  console.log("== 通用适配性测试（合成模组）==");
+
+  const bridge = { base: "星河桥", name: "星河桥", type: "ItemBridge", range: 8, bridgeWidth: 8 };
+  const node = { base: "聚能节点", name: "聚能节点", type: "PowerNode", laserScale: 0.4, laserColor1: "FFF2D6", laserColor2: "F19583" };
+  const driver = { base: "陨星驱", name: "陨星驱", type: "MassDriver", size: 2 };
+  const fakeMod = {
+    name: "测试A",
+    bundle: new Map([["block.测试A-星河桥.name", "星河大桥"]]),
+    blocks: new Map([
+      ["测试A-星河桥", bridge],
+      ["星河桥", bridge],
+      ["测试A-聚能节点", node],
+      ["聚能节点", node],
+      ["测试A-陨星驱", driver],
+      ["陨星驱", driver],
+    ]),
+  };
+
+  check("合成：桥类型判定", isBridgeType(bridge.type));
+  check("合成：电力节点类型判定", isPowerNodeType(node.type));
+  check("合成：质量驱动器类型判定", isMassDriverType(driver.type));
+  check(
+    "合成：modNameCandidates 去前缀",
+    JSON.stringify(modNameCandidates("测试A-星河桥", [fakeMod])) === JSON.stringify(["测试A-星河桥", "星河桥"]),
+    JSON.stringify(modNameCandidates("测试A-星河桥", [fakeMod]))
+  );
+
+  // 显示名优先级
+  check("合成：bundle 优先", blockDisplayName("测试A-星河桥", [fakeMod]) === "星河大桥", blockDisplayName("测试A-星河桥", [fakeMod]));
+  check("合成：无 bundle 回退 JSON name", blockDisplayName("测试A-聚能节点", [fakeMod]) === "聚能节点", blockDisplayName("测试A-聚能节点", [fakeMod]));
+  check("合成：vanilla 走 BLOCK_CN", blockDisplayName("mass-driver", []) === "质量驱动器", blockDisplayName("mass-driver", []));
+
+  // 注册后范围/配对生效
+  setModBridges(new Map([["测试A-星河桥", { range: bridge.range, width: bridge.bridgeWidth }], ["星河桥", { range: bridge.range, width: bridge.bridgeWidth }]]));
+  check("合成：bridgeRangeOf 生效", bridgeRangeOf("测试A-星河桥") === 8, `rng=${bridgeRangeOf("测试A-星河桥")}`);
+  check("合成：bridgeWidthOf = 24", bridgeWidthOf("星河桥") === 24, `w=${bridgeWidthOf("星河桥")}`);
+  const be = (x, y) => ({ tile: { block: "测试A-星河桥", x, y, rot: 0, config_type: "null", config: null }, size: 1, px: x * TILE, py: 0 });
+  check("合成：range 内两桥配对", bridgePairs([be(0, 0), be(6, 0)]).length === 1, `pairs=${bridgePairs([be(0, 0), be(6, 0)]).length}`);
+  check("合成：range 外不配对", bridgePairs([be(0, 0), be(10, 0)]).length === 0, `pairs=${bridgePairs([be(0, 0), be(10, 0)]).length}`);
+  setModBridges(new Map());
+
+  // 注册节点参数
+  const nodeInfo = { scale: node.laserScale, color1: node.laserColor1, color2: node.laserColor2 };
+  setModPowerNodes(new Map([["测试A-聚能节点", nodeInfo], ["聚能节点", nodeInfo]]));
+  const opts = nodeLaserOpts("测试A-聚能节点");
+  check("合成：nodeLaserOpts 宽度=10 / 端帽=0.4", opts.width === 10 && opts.capScale === 0.4, JSON.stringify(opts));
+  check("合成：nodeLaserOpts 颜色偏暖", opts.color[0] > opts.color[2], JSON.stringify(opts.color));
+
+  const W = TILE;
+  const base = new Uint8ClampedArray(W * W * 4).fill(255);
+  const sp = () => ({ w: W, h: W, size: 1, rgba: new Uint8ClampedArray(base), placeholder: false });
+  const sprites = { "测试A-聚能节点": sp(), laser: sp(), "laser-end": sp() };
+  const schem = {
+    width: 4,
+    height: 1,
+    tiles: [
+      { block: "测试A-聚能节点", x: 0, y: 0, rot: 0, config_type: "point2Array", config: [[3, 0]] },
+      { block: "测试A-聚能节点", x: 3, y: 0, rot: 0, config_type: "point2Array", config: [[-3, 0]] },
+    ],
+  };
+  const res = renderSchematic(schem, sprites, { scale: 1, pad: 0, transparent: true, grid: false });
+  const cw = 4 * TILE;
+  const mid = (16 * cw + 64) * 4;
+  check(
+    "合成：两节点之间能画线（暖色）",
+    res.rgba[mid] > 0 && res.rgba[mid] - res.rgba[mid + 2] > 20,
+    `r=${res.rgba[mid]} b=${res.rgba[mid + 2]}`
+  );
+  setModPowerNodes(new Map());
 }
 
 // -----------------------------------------------------------------------------
@@ -1019,6 +1110,7 @@ async function main() {
   await testPrefetch();
   testRequirements();
   await testMods();
+  testGeneric();
   await testNet();
 
   console.log("");

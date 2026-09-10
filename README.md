@@ -27,6 +27,7 @@ web/
   js/sources.js         Mindustry 镜像源（手动选择 + 超时 + 自动切换）
   js/zip.js             纯 JS zip 读取器（STORED/DEFLATE，可单测）
   js/mod.js             模组 zip 解析（方块/贴图/bundle，可单测）
+  js/names.js           方块显示名（bundle > JSON name > BLOCK_CN，可单测）
   js/requirements.js    蓝图总耗材计算（可单测）
   js/requirements_data.js 方块耗材表 BLOCK_REQUIREMENTS + 物品中文名 ITEM_CN
   js/app.js             UI 逻辑
@@ -164,6 +165,12 @@ UI emoji → 去掉。
     端帽按 `scale`；颜色 `lerp(laserColor1 ?? 白, laserColor2 ?? d9f7b2, 0.1)`（十六进制带/不带 `#` 均可）。
   - 电力目标：vanilla POWER_BLOCKS ∪ 模组 `hasPower===true`/`consumes.power` 方块 ∪ 模组质驱 ∪ 模组电力节点，
     均可被电力节点连线（模组节点之间也能互连）。
+- **方块显示名优先级**：模组语言文件 `block.<内部名>.name`（带 `<mod>-` 前缀时也尝试
+  `block.<base>.name`）→ 模组 JSON 的 `name` 字段 → 内置 `BLOCK_CN` → 内部名。
+  图例、热区提示、处理器按钮等均使用该显示名（`js/names.js` 的 `blockDisplayName`）。
+- **不针对任何具体模组**：桥/质驱/电力节点全部按 JSON `type` 字段（`*Bridge` /
+  `MassDriver` / `*PowerNode`）+ 运行时注册判定，代码中不含任何模组名（测试所用真实模组仅作
+  fixture）；通用性由合成模组测试固定（任意名字 + 类型即可正确分类/注册/渲染）。
 - **渲染集成**：贴图查找顺序为 内存 → 模组 `sprites-override` → 本地 `assets/sprites` →
   镜像源（超时/自动切换）→ 模组 `sprites` → 占位；模组方块缺失贴图但 JSON 有 `size`
   时按该尺寸占位；模组方块多层启发式（`<base>-base` 在前、`<base>-top` 在后）仅在
@@ -252,7 +259,7 @@ python3 -m http.server 8000
 
 ```bash
 cd web
-node --check js/data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/app.js
+node --check js/data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/app.js
 node test/parse_test.mjs
 ```
 

@@ -5,7 +5,6 @@
 
 import {
   TILE,
-  BLOCK_CN,
   CONTENT_CN,
   LOCAL_SPRITE_DIR,
   AUX_PATHS,
@@ -23,6 +22,7 @@ import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, p
 import { requirementsList } from "./requirements.js";
 import { BLOCK_REQUIREMENTS } from "./requirements_data.js";
 import { parseMod, modSpriteCandidates } from "./mod.js";
+import { blockDisplayName as resolveBlockDisplayName } from "./names.js";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -562,11 +562,16 @@ function findAuthor(schem) {
   return "未知";
 }
 
+/** 方块显示名：模组语言文件 > 模组 JSON name > 内置 BLOCK_CN > 内部名。 */
+function blockDisplayName(name) {
+  return resolveBlockDisplayName(name, mods);
+}
+
 function collectLegend(schem) {
   const counts = new Map();
   for (const t of schem.tiles) counts.set(t.block, (counts.get(t.block) || 0) + 1);
   return [...counts.entries()]
-    .map(([b, n]) => [BLOCK_CN[b] || b, n, b])
+    .map(([b, n]) => [blockDisplayName(b), n, b])
     .sort((e1, e2) => e2[1] - e1[1] || (e1[0] < e2[0] ? -1 : e1[0] > e2[0] ? 1 : 0));
 }
 
@@ -578,7 +583,7 @@ async function buildTileData(schem, layout) {
   for (let idx = 0; idx < schem.tiles.length; idx++) {
     const t = schem.tiles[idx];
     const e = layout.entry_by_index.get(idx);
-    const cn = BLOCK_CN[t.block] || t.block;
+    const cn = blockDisplayName(t.block);
     let kind = "";
     let code = "";
     let msg = "";
