@@ -56,8 +56,8 @@ body {
 }
 
 .panel-input { order: 1; }
-.panel-mod { order: 2; }
-.panel-history { order: 3; }
+.panel-history { order: 2; }
+.panel-mod { order: 3; }
 .panel-options { order: 4; }
 .meta-panel { order: 5; }
 .panel-req { order: 6; }

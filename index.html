@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <!-- 发布提示：每次发布请递增版本号 VER，并把入口脚本重命名为 js/main.<VER>.js（更新引用与 ?v=、页脚版本由 JS 注入） -->
-<!-- VER: 20260910d -->
+<!-- VER: 20260910e -->
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mindustry 蓝图解析 · 渲染工具</title>
-<link rel="stylesheet" href="css/style.css?v=20260910d">
+<link rel="stylesheet" href="css/style.css?v=20260910e">
 </head>
 <body>
 <div class="wrap">
@@ -34,6 +34,14 @@
         </div>
       </section>
 
+      <section class="panel panel-history" id="history-wrap">
+        <div class="section-title history-title">
+          <span>历史记录</span>
+          <button id="history-clear" class="link-btn" type="button">清空</button>
+        </div>
+        <div id="history-list" class="history-list"></div>
+      </section>
+
       <section class="panel panel-mod">
         <div class="section-title">模组</div>
         <div class="row mod-row">
@@ -45,14 +53,6 @@
         </div>
         <div id="mod-drop" class="mod-drop">把模组 .zip / .jar 拖到这里（支持 JSON / 混合模组）</div>
         <div id="mod-list" class="mod-list"></div>
-      </section>
-
-      <section class="panel panel-history" id="history-wrap">
-        <div class="section-title history-title">
-          <span>历史记录</span>
-          <button id="history-clear" class="link-btn" type="button">清空</button>
-        </div>
-        <div id="history-list" class="history-list"></div>
       </section>
 
       <section class="panel panel-options">
@@ -180,6 +180,6 @@
   </div>
 </div>
 
-<script type="module" src="js/main.20260910d.js?v=20260910d"></script>
+<script type="module" src="js/main.20260910e.js?v=20260910e"></script>
 </body>
 </html>

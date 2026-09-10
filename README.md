@@ -215,7 +215,7 @@ UI emoji → 去掉。
 - 容量策略（`js/history.js` 纯函数）：单条 `input > 1MB` 不记录；总条数 ≤ **16**；
   总字节（按 `input.length`）≤ **2MB**，超限从最旧淘汰；写入失败（配额）→ 淘汰一半重试一次，
   仍失败静默放弃。
-- UI：PC 左栏 / 移动端模组区之后的「历史记录」小节，列表项显示
+- UI：「输入蓝图」正下方的「历史记录」小节（PC 左栏同序：输入 → 历史 → 模组 → 渲染选项），列表项显示
   `名称 · 宽×高 · 方块数 · 相对时间`，右侧 `×` 删除，标题旁「清空」；
   小节始终显示，空列表时为弱化提示「暂无历史记录，解析蓝图后自动保存到本地」。
 
@@ -288,7 +288,7 @@ python3 -m http.server 8000
 
 ```bash
 cd web
-node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/history.js js/main.20260910d.js
+node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/history.js js/main.20260910e.js
 node test/parse_test.mjs
 ```
 
