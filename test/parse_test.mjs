@@ -16,10 +16,16 @@ import {
   tileFootprint,
   dilateAlpha,
   bridgePairs,
+  bridgeWidthOf,
   drawBeam,
   renderSchematic,
   drawGrid,
   makePlaceholder,
+  isBridgeType,
+  isMassDriverType,
+  setModBridges,
+  setModOutline,
+  setModPowerBlocks,
 } from "../js/render.js";
 import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN } from "../js/data.js";
 import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, ICON_FONT_LO } from "../js/icons.js";
@@ -500,6 +506,11 @@ async function testMods() {
     check("67科技 name=无限", m.name === "无限", `name=${m.name}`);
     check("67科技 blocks=31", modBlockCount(m) === 31, `blocks=${modBlockCount(m)}`);
     check("67科技 sprites=122", m.sprites.size === 122, `sprites=${m.sprites.size}`);
+    check(
+      "67科技 无桥（type 无 Bridge）",
+      [...m.blocks.values()].every((d) => !isBridgeType(d.type)),
+      [...new Set([...m.blocks.values()].map((d) => d.type))].join(",")
+    );
     // 懒解压：解析阶段不读贴图字节，首次 get 才解压且缓存
     check("67科技 懒加载：解析后未解压贴图", m.spriteStats.reads === 0, `reads=${m.spriteStats.reads}`);
     const k67 = [...m.sprites.keys()][0];
@@ -562,6 +573,65 @@ async function testMods() {
       check("模组耗材合并到总表 lead=220", total.get("lead") === 220, `lead=${total.get("lead")}`);
       check("模组耗材合并到总表 硅钢=150", total.get("硅钢") === 150, `硅钢=${total.get("硅钢")}`);
     }
+
+    // ---- 按 type 分类（桥 / 质驱）----
+    const tower = m.blocks.get("饱和火力-裂位传送塔");
+    const conduit = m.blocks.get("饱和火力-裂位导管塔");
+    const driver = m.blocks.get("饱和火力-裂位驱动器");
+    check("裂位传送塔 type=ItemBridge", !!tower && tower.type === "ItemBridge" && isBridgeType(tower.type), tower && tower.type);
+    check("裂位传送塔 range=36 / bridgeWidth=8", !!tower && tower.range === 36 && tower.bridgeWidth === 8, tower && `${tower.range}/${tower.bridgeWidth}`);
+    check("裂位导管塔 type=LiquidBridge", !!conduit && conduit.type === "LiquidBridge" && isBridgeType(conduit.type), conduit && conduit.type);
+    check("裂位驱动器 type=MassDriver / size=4", !!driver && driver.type === "MassDriver" && driver.size === 4 && isMassDriverType(driver.type), driver && `${driver.type}/${driver.size}`);
+    check("裂位驱动器 range=800", !!driver && driver.range === 800, driver && driver.range);
+
+    // ---- 运行时注册：桥配对 range 生效 ----
+    const mkE = (x, y) => ({
+      tile: { block: "饱和火力-裂位传送塔", x, y, rot: 0, config_type: "null", config: null },
+      size: 1,
+      px: x * TILE,
+      py: 0,
+    });
+    setModBridges(new Map([["饱和火力-裂位传送塔", { range: tower.range, width: tower.bridgeWidth }]]));
+    check("注册后：相距 30 格配对成功（range 36）", bridgePairs([mkE(0, 0), mkE(30, 0)]).length === 1, `pairs=${bridgePairs([mkE(0, 0), mkE(30, 0)]).length}`);
+    check("注册后：相距 40 格不配对", bridgePairs([mkE(0, 0), mkE(40, 0)]).length === 0, `pairs=${bridgePairs([mkE(0, 0), mkE(40, 0)]).length}`);
+    check("模组桥带宽度 = round(24*8/6.5) = 30", bridgeWidthOf("饱和火力-裂位传送塔") === 30, `w=${bridgeWidthOf("饱和火力-裂位传送塔")}`);
+    setModBridges(new Map());
+
+    // ---- 运行时注册：模组质驱描边 ----
+    const w = TILE;
+    const ring = new Uint8ClampedArray(w * w * 4);
+    for (let y = 12; y < 20; y++) {
+      for (let x = 12; x < 20; x++) {
+        const o = (y * w + x) * 4;
+        ring[o] = 255;
+        ring[o + 1] = 255;
+        ring[o + 2] = 255;
+        ring[o + 3] = 255;
+      }
+    }
+    const sprites = { "饱和火力-裂位驱动器": { w, h: w, size: 1, rgba: ring, placeholder: false } };
+    const schem = {
+      width: 1,
+      height: 1,
+      tiles: [{ block: "饱和火力-裂位驱动器", x: 0, y: 0, rot: 0, config_type: "null", config: null }],
+    };
+    setModOutline(new Map([["饱和火力-裂位驱动器", [[0x40, 0x40, 0x49], 4]]]));
+    const rOut = renderSchematic(schem, sprites, { scale: 1, pad: 0, transparent: true, grid: false });
+    setModOutline(new Map());
+    const rNo = renderSchematic(schem, sprites, { scale: 1, pad: 0, transparent: true, grid: false });
+    const px = (16 * TILE + 8) * 4;
+    check(
+      "模组质驱套用描边（环上有色、未注册则透明）",
+      rOut.rgba[px + 3] > 0 && rNo.rgba[px + 3] === 0,
+      `outline=${rOut.rgba[px + 3]} plain=${rNo.rgba[px + 3]}`
+    );
+    check(
+      "描边颜色 ",
+      rOut.rgba[px] === 0x40 && rOut.rgba[px + 1] === 0x40 && rOut.rgba[px + 2] === 0x49,
+      [rOut.rgba[px], rOut.rgba[px + 1], rOut.rgba[px + 2]].join(",")
+    );
+    setModOutline(new Map());
+    setModPowerBlocks(new Set());
   }
 }
 

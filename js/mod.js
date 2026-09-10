@@ -175,7 +175,8 @@ function makeLazySpriteMap(zip, entriesMap, stats, fallbackMaps = []) {
  * @param {Uint8Array|ArrayBuffer|Blob} input
  * @param {string} fileName
  * @returns {Promise<{name,displayName,blocks:Map,sprites,spritesOverride,bundle:Map,fileName,spriteStats}>}
- *   blocks: Map(内部名/base → {base,size,name,requirements})
+ *   blocks: Map(内部名/base → {base,size,name,requirements,type,range,bridgeWidth,
+ *            hasPower,outlineIcon,outlineColor,outlineRadius,rotate,consumesPower})
  *   sprites: 懒解压贴图表（basename 索引，sprites-override 已覆盖）；
  *            `size`/`has`/`keys` 为条目数，`get(name)` 按需解压返回 Blob
  *   spritesOverride: 懒解压表（仅 sprites-override/**）
@@ -216,6 +217,16 @@ export async function parseMod(input, fileName = "mod.zip") {
       size: Number(obj.size) > 0 ? Number(obj.size) : 1,
       name: obj.name ? String(obj.name) : base,
       requirements: parseRequirements(obj.requirements),
+      // 供桥/激光/描边分类使用的原字段（缺失记 undefined，不臆造）
+      type: obj.type ? String(obj.type) : "Block",
+      range: obj.range !== undefined ? Number(obj.range) : undefined,
+      bridgeWidth: obj.bridgeWidth !== undefined ? Number(obj.bridgeWidth) : undefined,
+      hasPower: obj.hasPower !== undefined ? !!obj.hasPower : undefined,
+      outlineIcon: obj.outlineIcon !== undefined ? !!obj.outlineIcon : undefined,
+      outlineColor: obj.outlineColor !== undefined ? String(obj.outlineColor) : undefined,
+      outlineRadius: obj.outlineRadius !== undefined ? Number(obj.outlineRadius) : undefined,
+      rotate: obj.rotate !== undefined ? !!obj.rotate : undefined,
+      consumesPower: !!(obj.consumes && obj.consumes.power !== undefined),
     };
     const internal = name + "-" + base;
     blocks.set(internal, def);

@@ -15,7 +15,7 @@ import {
   DEFAULT_PAD,
 } from "./data.js";
 import { parseSchematic, extractLogic, isProcessor } from "./parser.js";
-import { renderSchematic, getSprite, makePlaceholder, setModLayers } from "./render.js";
+import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, isBridgeType, isMassDriverType } from "./render.js";
 import { setIconIndex, richText, plainTextWithIcons, itemIconSrc } from "./icons.js";
 import { simpleHash, createPrefetchManager } from "./prefetch.js";
 import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js";
@@ -85,6 +85,7 @@ let modNames = []; // 模组内部名（用于去前缀）
 let modOverrideIndex = new Map(); // basename -> 提供该贴图的模组（sprites-override）
 let modNormalIndex = new Map(); // basename -> 提供该贴图的模组（sprites/）
 let modLayersMap = {}; // 方块名 -> [贴图层名, ...]
+let modBridgeNames = new Set(); // 模组桥方块名（内部名与 base）
 let modBlockSizes = new Map(); // 方块名（内部名/base）-> size
 let modRequirementsTable = {}; // 方块名 -> requirements
 let modBundle = new Map(); // bundle key -> value（合并所有模组）
@@ -162,7 +163,17 @@ async function blobToSprite(blob) {
   return bitmapToSprite(bmp);
 }
 
-/** 由 mods 重建所有派生结构（贴图索引、多层表、方块尺寸、耗材表、bundle）。 */
+/** 解析 "#rrggbb" / "rrggbb" 描边色；失败返回 null。 */
+function parseOutlineColor(v) {
+  if (!v) return null;
+  const s = String(v).trim().replace(/^#/, "");
+  const m = /^([0-9a-fA-F]{6})$/.exec(s);
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** 由 mods 重建所有派生结构（贴图索引、多层表、桥/描边/电力、耗材、bundle）。 */
 function rebuildModDerived() {
   modNames = mods.map((m) => m.name);
   modOverrideIndex = new Map();
@@ -171,6 +182,10 @@ function rebuildModDerived() {
   modRequirementsTable = {};
   modBundle = new Map();
   modLayersMap = {};
+  modBridgeNames = new Set();
+  const bridgeMap = new Map(); // name -> { range, width }
+  const outlineMap = new Map(); // name -> [[r,g,b], radius]
+  const powerSet = new Set();
 
   for (const m of mods) {
     // override 优先；normal 中剔除同名（被 override 覆盖）
@@ -178,10 +193,41 @@ function rebuildModDerived() {
     for (const k of m.sprites.keys()) {
       if (!m.spritesOverride.has(k)) modNormalIndex.set(k, m);
     }
-    // 方块尺寸 + 耗材（内部名与 base 都注册）
+    // 方块尺寸 + 耗材 + type 分类（内部名与 base 都注册）
     for (const [key, def] of m.blocks) {
       modBlockSizes.set(key, def.size);
       modRequirementsTable[key] = def.requirements;
+
+      // 桥：type 以 Bridge 结尾（ItemBridge/LiquidBridge/…）
+      if (isBridgeType(def.type)) {
+        const info = { range: def.range, width: def.bridgeWidth };
+        bridgeMap.set(key, info);
+        if (!bridgeMap.has(def.base)) bridgeMap.set(def.base, info);
+        modBridgeNames.add(key);
+        modBridgeNames.add(def.base);
+      }
+
+      // 质量驱动器：描边 + 电力目标
+      if (isMassDriverType(def.type)) {
+        if (def.outlineIcon !== false) {
+          const color = parseOutlineColor(def.outlineColor) || [0x40, 0x40, 0x49];
+          const radius =
+            def.outlineRadius !== undefined && def.outlineRadius !== null && !Number.isNaN(def.outlineRadius)
+              ? def.outlineRadius
+              : 4;
+          const info = [color, radius];
+          outlineMap.set(key, info);
+          if (!outlineMap.has(def.base)) outlineMap.set(def.base, info);
+        }
+        powerSet.add(key);
+        powerSet.add(def.base);
+      }
+
+      // 电力目标：hasPower===true 或 consumes.power 存在
+      if (def.hasPower === true || def.consumesPower) {
+        powerSet.add(key);
+        powerSet.add(def.base);
+      }
     }
     // bundle
     for (const [k, v] of m.bundle) modBundle.set(k, v);
@@ -207,6 +253,9 @@ function rebuildModDerived() {
     }
   }
   setModLayers(modLayersMap);
+  setModBridges(bridgeMap);
+  setModOutline(outlineMap);
+  setModPowerBlocks(powerSet);
 }
 
 /** 模组 sprites-override 贴图（懒解压）。 */
@@ -344,7 +393,7 @@ function collectNeeded(schem) {
     add(t.block, true);
     const ls = LAYERS[t.block] || modLayersMap[t.block];
     if (ls) for (const l of ls) add(l, l === t.block);
-    if (BRIDGE_BLOCKS.has(t.block)) {
+    if (BRIDGE_BLOCKS.has(t.block) || modBridgeNames.has(t.block)) {
       add(t.block + "-bridge", false);
       add(t.block + "-arrow", false);
     }

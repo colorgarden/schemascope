@@ -156,6 +156,13 @@ UI emoji → 去掉。
   解压该条目并缓存为 Blob（会话内）。`mod.sprites.size` 为**条目数**，
   `mod.spritesOverride.size` 为 override 条目数；UI 显示「贴图 N（按需加载）」。
   `sprites-override` 仍覆盖 `sprites`。
+- **桥 / 质驱按 JSON `type` 判定**（不硬编码名字）：
+  - 桥：`type` 以 `Bridge` 结尾（`ItemBridge`/`LiquidBridge`/`BufferedItemBridge`/`DirectionalBridge` 等），
+    采集 `<block>-bridge` / `<block>-arrow` 贴图并画连接线与箭头；配对范围取模组 `range`
+    （否则 vanilla 值，再否则 4）；桥带宽度按 `bridgeWidth` 与 24px/6.5 等比换算。
+  - 质量驱动器：`type === "MassDriver"`（或以之结尾），按 vanilla 规则套用描边；`outlineIcon===false`
+    不描边，颜色取 `outlineColor`（支持 `#rrggbb`/`rrggbb`）否则 `#404049`，半径取 `outlineRadius` 否则 4。
+  - 电力目标：模组方块 `hasPower===true` 或含 `consumes.power`，以及模组质驱，均可被电力节点连线。
 - **渲染集成**：贴图查找顺序为 内存 → 模组 `sprites-override` → 本地 `assets/sprites` →
   镜像源（超时/自动切换）→ 模组 `sprites` → 占位；模组方块缺失贴图但 JSON 有 `size`
   时按该尺寸占位；模组方块多层启发式（`<base>-base` 在前、`<base>-top` 在后）仅在

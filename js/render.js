@@ -32,6 +32,68 @@ export function setModLayers(map) {
   MOD_LAYERS = map || {};
 }
 
+// 模组桥（type 以 "Bridge" 结尾）：name -> { range, width }
+let MOD_BRIDGES = new Map();
+// 模组描边（MassDriver 类）：name -> [[r,g,b], radius]
+let MOD_OUTLINE = new Map();
+// 模组电力目标：可作为电力节点连线目标的方块名
+let MOD_POWER_BLOCKS = new Set();
+
+function toMap(v) {
+  if (v instanceof Map) return v;
+  return new Map(Object.entries(v || {}));
+}
+function toSet(v) {
+  if (v instanceof Set) return v;
+  return new Set(v || []);
+}
+
+/** 注册模组桥信息：Map(name -> {range?, width?})。 */
+export function setModBridges(map) {
+  MOD_BRIDGES = toMap(map);
+}
+
+/** 注册模组描边信息：Map(name -> [[r,g,b], radius])。 */
+export function setModOutline(map) {
+  MOD_OUTLINE = toMap(map);
+}
+
+/** 注册模组电力方块集合（Set 或数组）。 */
+export function setModPowerBlocks(set) {
+  MOD_POWER_BLOCKS = toSet(set);
+}
+
+/** 桥类型判定：type 以 "Bridge" 结尾（ItemBridge/LiquidBridge/BufferedItemBridge/DirectionalBridge 等）。 */
+export function isBridgeType(type) {
+  return typeof type === "string" && type.length > 0 && type.endsWith("Bridge");
+}
+
+/** 质量驱动器类型判定。 */
+export function isMassDriverType(type) {
+  return type === "MassDriver" || (typeof type === "string" && type.endsWith("MassDriver"));
+}
+
+/** 是否为模组桥（vanilla 集合之外）。 */
+export function isModBridge(name) {
+  return MOD_BRIDGES.has(name);
+}
+
+/** 桥配对范围：模组 range 优先，其次 vanilla BRIDGE_RANGE，最后 4。 */
+export function bridgeRangeOf(name) {
+  const m = MOD_BRIDGES.get(name);
+  if (m && m.range !== undefined && m.range !== null) return m.range;
+  return BRIDGE_RANGE[name] !== undefined ? BRIDGE_RANGE[name] : 4;
+}
+
+/** 桥带宽度：模组 bridgeWidth 按 24px/6.5 等比，否则全局 24。 */
+export function bridgeWidthOf(name) {
+  const m = MOD_BRIDGES.get(name);
+  if (m && m.width !== undefined && m.width !== null) {
+    return Math.round((BRIDGE_WIDTH * m.width) / 6.5);
+  }
+  return BRIDGE_WIDTH;
+}
+
 // -----------------------------------------------------------------------------
 // 数值辅助（对齐 Python 的 // 与 int()/round() 语义）
 // -----------------------------------------------------------------------------
@@ -544,7 +606,7 @@ export function drawPowerLasers(buf, cw, ch, layout, sprites) {
       const [ox, oy] = off;
       const te = lookup.get(`${t.x + ox},${t.y + oy}`);
       if (!te) continue;
-      if (!POWER_BLOCKS.has(te.tile.block)) continue;
+      if (!(POWER_BLOCKS.has(te.tile.block) || MOD_POWER_BLOCKS.has(te.tile.block))) continue;
       const tx = te.px + (te.size * TILE) / 2.0;
       const ty = te.py + (te.size * TILE) / 2.0;
       drawNodeLaser(buf, cw, ch, sx, sy, e.size, tx, ty, te.size, sprites);
@@ -555,7 +617,8 @@ export function drawPowerLasers(buf, cw, ch, layout, sprites) {
 /** 计算桥连接对（对应 _bridge_pairs）。返回 [[e, te], ...]。 */
 export function bridgePairs(entries) {
   const key = (e) => `${e.tile.x},${e.tile.y}`;
-  const bridges = entries.filter((e) => BRIDGE_BLOCKS.has(e.tile.block));
+  const isBridge = (b) => BRIDGE_BLOCKS.has(b) || MOD_BRIDGES.has(b);
+  const bridges = entries.filter((e) => isBridge(e.tile.block));
   const lookup = new Map();
   for (const e of bridges) lookup.set(key(e), e);
   const claimed = new Set();
@@ -570,7 +633,7 @@ export function bridgePairs(entries) {
 
   for (const e of bridges) {
     const t = e.tile;
-    const rng = BRIDGE_RANGE[t.block] !== undefined ? BRIDGE_RANGE[t.block] : 4;
+    const rng = bridgeRangeOf(t.block);
     const cfg = t.config;
     if (t.config_type !== "point2" || !cfg) continue;
     const [dx, dy] = cfg;
@@ -596,7 +659,7 @@ export function bridgePairs(entries) {
   for (const e of bridges) {
     if (claimed.has(key(e))) continue;
     const t = e.tile;
-    const rng = BRIDGE_RANGE[t.block] !== undefined ? BRIDGE_RANGE[t.block] : 4;
+    const rng = bridgeRangeOf(t.block);
     let best = null;
     let bestd = 1 << 30;
     for (const o of bridges) {
@@ -646,7 +709,7 @@ export function drawBridges(buf, cw, ch, layout, sprites) {
 
     const body = getSprite(sprites, a.tile.block + "-bridge", true);
     if (body) {
-      drawBeam(buf, cw, ch, l1x, l1y, l2x, l2y, body.rgba, body.w, body.h, BRIDGE_WIDTH, [255, 255, 255], BRIDGE_OPACITY);
+      drawBeam(buf, cw, ch, l1x, l1y, l2x, l2y, body.rgba, body.w, body.h, bridgeWidthOf(a.tile.block), [255, 255, 255], BRIDGE_OPACITY);
     }
     const arrow = getSprite(sprites, a.tile.block + "-arrow", true);
     if (arrow) {
@@ -697,9 +760,10 @@ export function renderSchematic(schem, sprites, opts = {}) {
       const sw = sp.w;
       const sh = sp.h;
       let rgba = sp.rgba;
-      // outlineIcon 方块的顶层图标贴图先加描边
-      if (li === names.length - 1 && OUTLINE_ICON[t.block]) {
-        const [ocol, orad] = OUTLINE_ICON[t.block];
+      // outlineIcon 方块的顶层图标贴图先加描边（vanilla ∪ 模组）
+      const outline = OUTLINE_ICON[t.block] || MOD_OUTLINE.get(t.block);
+      if (li === names.length - 1 && outline) {
+        const [ocol, orad] = outline;
         rgba = makeOutline(rgba, sw, sh, ocol, orad);
       }
       const [rw, rh, rrgba] = rotateSprite(rgba, sw, sh, t.rot);
