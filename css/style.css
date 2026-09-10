@@ -775,43 +775,42 @@ footer p + p {
 }
 
 /* =============================================================================
-   桌面端（≥960px）：双栏布局
+   桌面端双栏布局：由 JS 切换 html.desktop 类驱动
+   触发条件（任一满足）：① 布局视口 ≥960px（含手机「桌面模式」约 980px 视口）；
+   ② 桌面 UA（Windows/Mac/X11/CrOS，含仅改 UA 的浏览器）。
    左栏 = 输入 / 模组 / 控制项 / 处理器按钮（独立滚动，sticky）
    右栏 = 信息(+标签) / 耗材 / 状态 / canvas 预览 / 图例
-   注：断点按“布局视口宽度”生效（与 UA 无关）。手机浏览器「桌面模式」
-   的视口通常约 980px，因此取 960 以覆盖该场景；手机横屏（约 915px）仍为单列。
    ============================================================================= */
-@media (min-width: 960px) {
-  .wrap {
+  html.desktop .wrap {
     max-width: 1600px;
     padding: 24px 24px 56px;
   }
 
-  header {
+  html.desktop header {
     padding-bottom: 16px;
     margin-bottom: 18px;
   }
 
-  h1 {
+  html.desktop h1 {
     font-size: 24px;
   }
 
-  h1 .sub {
+  html.desktop h1 .sub {
     font-size: 14px;
   }
 
-  .lead {
+  html.desktop .lead {
     font-size: 14px;
   }
 
-  .layout {
+  html.desktop .layout {
     display: grid;
     grid-template-columns: minmax(340px, 410px) minmax(0, 1fr);
     gap: 18px;
     align-items: start;
   }
 
-  .col-left {
+  html.desktop .col-left {
     display: flex;
     flex-direction: column;
     gap: 14px;
@@ -823,7 +822,7 @@ footer p + p {
     scrollbar-width: thin;
   }
 
-  .col-right {
+  html.desktop .col-right {
     display: flex;
     flex-direction: column;
     gap: 14px;
@@ -838,12 +837,12 @@ footer p + p {
   .col-right .panel-req { order: 5; }
 
   /* 用 gap 统管列内间距，去掉面板自带的 margin */
-  .col-left .panel,
-  .col-right .panel {
+  html.desktop .col-left .panel,
+  html.desktop .col-right .panel {
     margin-bottom: 0;
   }
 
-  .col-right .status {
+  html.desktop .col-right .status {
     padding: 8px 12px;
     margin: -4px 0 0;
     border: 1px solid var(--line);
@@ -856,15 +855,19 @@ footer p + p {
   }
 
   /* canvas 由 JS 依据 72vh 上限与容器宽度设置 stage-fit 尺寸；此处兜底比例填充 */
-  .stage canvas {
+  html.desktop .stage canvas {
     height: 100%;
   }
 
-  .requirements {
+  html.desktop .requirements {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  footer {
+  html.desktop footer {
     margin-top: 28px;
   }
+
+/* 仅改 UA（视口仍窄）时：保留桌面双栏并允许横向滚动 */
+html.desktop .wrap {
+  min-width: 900px;
 }

@@ -466,6 +466,28 @@ function renderToCanvas(schem) {
   return result;
 }
 
+// -----------------------------------------------------------------------------
+// 桌面布局模式：视口 ≥960px（含手机「桌面模式」约 980px 视口）
+// 或桌面 UA（Windows/Mac/X11/CrOS，支持仅改 UA 的场景）任一满足即启用；
+// 统一切换 html.desktop 类，CSS 与 canvas 适配都以该类为唯一依据。
+// -----------------------------------------------------------------------------
+const DESKTOP_MQ = window.matchMedia("(min-width: 960px)");
+
+function isDesktopUA() {
+  const ua = navigator.userAgent || "";
+  return /Windows NT|Macintosh|Mac OS X|X11|CrOS/i.test(ua);
+}
+
+function applyLayoutMode() {
+  const desktop = DESKTOP_MQ.matches || isDesktopUA();
+  document.documentElement.classList.toggle("desktop", desktop);
+  fitStage();
+}
+
+if (DESKTOP_MQ.addEventListener) {
+  DESKTOP_MQ.addEventListener("change", applyLayoutMode);
+}
+
 /**
  * 桌面端：按容器宽度与 72vh 高度上限计算 canvas 显示尺寸，
  * 交给 .stage-fit 作为精确尺寸；#spots 以 inset:0 覆盖它，
@@ -475,7 +497,7 @@ function fitStage() {
   const fit = els.stageFit;
   const canvas = els.canvas;
   if (!fit || !canvas || !canvas.width || !els.stage) return;
-  if (window.matchMedia("(max-width: 959px)").matches) {
+  if (!document.documentElement.classList.contains("desktop")) {
     fit.style.width = "";
     fit.style.height = "";
     return;
@@ -1215,6 +1237,7 @@ if (els.clearCache) {
 
 // 初始化
 (async function init() {
+  applyLayoutMode();
   await loadSpriteIndex();
   setIconIndex(spriteIndex);
   await loadCachedMods();
