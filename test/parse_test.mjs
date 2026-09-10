@@ -11,7 +11,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 
-import { parseSchematic, extractLogic, isProcessor, bytesToBase64, isTextBlueprint, parseContentMap, FALLBACK_BLOCKS, LEGACY_BLOCKS } from "../js/v20260910j/parser.js";
+import { parseSchematic, extractLogic, isProcessor, bytesToBase64, isTextBlueprint, parseContentMap, FALLBACK_BLOCKS, LEGACY_BLOCKS } from "../js/v20260910k/parser.js";
 import {
   computeLayout,
   tileFootprint,
@@ -34,17 +34,17 @@ import {
   setModPowerNodes,
   setModLayers,
   nodeLaserOpts,
-} from "../js/v20260910j/render.js";
-import { blockDisplayName, modNameCandidates, spriteDisplayName } from "../js/v20260910j/names.js";
-import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN, CONTENT_COLORS, CONFIG_UNDERLAY, CONFIG_OVERLAY } from "../js/v20260910j/data.js";
-import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, ICON_FONT_LO } from "../js/v20260910j/icons.js";
-import { ICON_BY_CODE, ICON_LOCAL_CODES } from "../js/v20260910j/icons_data.js";
-import { simpleHash, createPrefetchManager } from "../js/v20260910j/prefetch.js";
-import { computeRequirements, requirementsList } from "../js/v20260910j/requirements.js";
-import { BLOCK_REQUIREMENTS } from "../js/v20260910j/requirements_data.js";
-import { openZip } from "../js/v20260910j/zip.js";
-import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers, looseJson, parseRequirements } from "../js/v20260910j/mod.js";
-import { CN_BLOCKS } from "../js/v20260910j/cn_data.js";
+} from "../js/v20260910k/render.js";
+import { blockDisplayName, modNameCandidates, spriteDisplayName } from "../js/v20260910k/names.js";
+import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN, CONTENT_COLORS, CONFIG_UNDERLAY, CONFIG_OVERLAY } from "../js/v20260910k/data.js";
+import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, ICON_FONT_LO } from "../js/v20260910k/icons.js";
+import { ICON_BY_CODE, ICON_LOCAL_CODES } from "../js/v20260910k/icons_data.js";
+import { simpleHash, createPrefetchManager } from "../js/v20260910k/prefetch.js";
+import { computeRequirements, requirementsList } from "../js/v20260910k/requirements.js";
+import { BLOCK_REQUIREMENTS } from "../js/v20260910k/requirements_data.js";
+import { openZip } from "../js/v20260910k/zip.js";
+import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers, looseJson, parseRequirements } from "../js/v20260910k/mod.js";
+import { CN_BLOCKS } from "../js/v20260910k/cn_data.js";
 import {
   HISTORY_KEY,
   HISTORY_MAX_ITEMS,
@@ -55,7 +55,7 @@ import {
   saveHistory,
   loadHistory,
   formatRelativeTime,
-} from "../js/v20260910j/history.js";
+} from "../js/v20260910k/history.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -948,6 +948,20 @@ function testSpriteNames() {
     blocks: new Map([["测试A-星河桥", { name: "星河大桥" }]]),
   };
   check("spriteDisplayName 模组层剥离", spriteDisplayName("测试A-星河桥-top", [fakeMod]) === "星河大桥", spriteDisplayName("测试A-星河桥-top", [fakeMod]));
+
+  // 模组覆盖原版方块：JSON name 与内部名相同 → 视为未翻译，回退官方中文表（饱和火力实测场景）
+  const overrideMod = {
+    name: "饱和火力",
+    bundle: new Map(),
+    blocks: new Map([
+      ["silicon-smelter", { name: "silicon-smelter" }],
+      ["junction", { name: "junction" }],
+      ["饱和火力-裂位传送塔", { name: "裂位传送塔" }],
+    ]),
+  };
+  check("覆盖原版但 name=内部名 → 官方表", blockDisplayName("silicon-smelter", [overrideMod]) === "硅冶炼厂", blockDisplayName("silicon-smelter", [overrideMod]));
+  check("覆盖原版 junction → 交叉器", blockDisplayName("junction", [overrideMod]) === "交叉器", blockDisplayName("junction", [overrideMod]));
+  check("模组自定义名仍优先", blockDisplayName("饱和火力-裂位传送塔", [overrideMod]) === "裂位传送塔", blockDisplayName("饱和火力-裂位传送塔", [overrideMod]));
 }
 
 // -----------------------------------------------------------------------------
@@ -1463,8 +1477,8 @@ async function testNet() {
   });
 
   try {
-    const { fetchMindustry, resetProbe, SOURCES, DEFAULT_SOURCES, SOURCE_DEFS, getSourceOrder, setChoiceKey, probeAllSources } = await import("../js/v20260910j/sources.js");
-    const { fetchMindustryCached, spriteCacheKey, resetCacheInfo } = await import("../js/v20260910j/cache.js");
+    const { fetchMindustry, resetProbe, SOURCES, DEFAULT_SOURCES, SOURCE_DEFS, getSourceOrder, setChoiceKey, probeAllSources } = await import("../js/v20260910k/sources.js");
+    const { fetchMindustryCached, spriteCacheKey, resetCacheInfo } = await import("../js/v20260910k/cache.js");
     const A = SOURCES[0];
     const B = SOURCES[1];
     const C = SOURCES[2];

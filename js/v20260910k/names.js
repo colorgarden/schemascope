@@ -39,12 +39,12 @@ export function blockDisplayName(name, mods) {
     }
   }
 
-  // 2) 模组 JSON name 字段
+  // 2) 模组 JSON name 字段（与内部名相同 → 视为未翻译，继续往下走官方表）
   for (const m of mods || []) {
     if (!m || !m.blocks) continue;
     for (const c of cands) {
       const def = m.blocks.get(c);
-      if (def && def.name) return def.name;
+      if (def && def.name && def.name !== c && def.name !== name) return def.name;
     }
   }
 
