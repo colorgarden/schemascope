@@ -20,6 +20,7 @@ import { renderSchematic, getSprite, makePlaceholder } from "./render.js";
 import { setIconIndex, richText, plainTextWithIcons } from "./icons.js";
 import { simpleHash, createPrefetchManager } from "./prefetch.js";
 import { fetchCached, clearPersistentCache, cacheInfo } from "./cache.js";
+import { requirementsList } from "./requirements.js";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -47,6 +48,8 @@ const els = {
   metaProc: $("meta-proc"),
   labelsWrap: $("labels-wrap"),
   labels: $("labels"),
+  reqWrap: $("req-wrap"),
+  requirements: $("requirements"),
   exportBtn: $("export-btn"),
   tip: $("tip"),
   overlay: $("overlay"),
@@ -494,6 +497,40 @@ function buildLegend(schem) {
   els.legend.replaceChildren(frag);
 }
 
+/** 总耗材面板（遍历方块 requirements 累加；无数据不显示）。 */
+function buildRequirements(schem) {
+  const list = requirementsList(schem.tiles);
+  if (!list.length) {
+    els.reqWrap.style.display = "none";
+    els.requirements.replaceChildren();
+    return;
+  }
+  els.reqWrap.style.display = "block";
+  const frag = document.createDocumentFragment();
+  for (const { item, name, count } of list) {
+    const spriteName = "item-" + item;
+    const rel = spriteRelPath(spriteName);
+    const local = LOCAL_SPRITE_DIR + spriteName + ".png";
+    let img;
+    if (rel) {
+      const cdn = CDN_PREFIX + rel.base + rel.path;
+      img =
+        `<img class="req-icon" src="${local}" data-fb="${cdn}"` +
+        ` alt="${esc(name)}" loading="lazy" onerror="this.onerror=null;this.src=this.dataset.fb">`;
+    } else {
+      img = `<img class="req-icon" src="${local}" alt="${esc(name)}" loading="lazy" onerror="this.onerror=null">`;
+    }
+    const div = document.createElement("div");
+    div.className = "req-item";
+    div.innerHTML =
+      img +
+      `<span class="req-name">${esc(name)}</span>` +
+      `<span class="req-count">×${count}</span>`;
+    frag.appendChild(div);
+  }
+  els.requirements.replaceChildren(frag);
+}
+
 // -----------------------------------------------------------------------------
 // 输入即解析 + 后台预加载（防抖）
 // -----------------------------------------------------------------------------
@@ -593,6 +630,7 @@ async function run(input) {
     buildProcButtons(procButtons);
     buildHotspots(schem, layout, tiles);
     buildLegend(schem);
+    buildRequirements(schem);
     els.exportBtn.disabled = false;
 
     const missing = lastMissing;

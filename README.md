@@ -24,8 +24,11 @@ web/
   js/icons_data.js      PUA 码点表（由 icons.properties 生成）
   js/prefetch.js        输入哈希 + 预加载管理器（可单测）
   js/cache.js           Cache Storage 持久化缓存（SWR + TTL）
+  js/requirements.js    蓝图总耗材计算（可单测）
+  js/requirements_data.js 方块耗材表 BLOCK_REQUIREMENTS + 物品中文名 ITEM_CN
   js/app.js             UI 逻辑
   assets/fonts/icon.ttf UI emoji 字体（MindustryIcons）
+  assets/icons/*.png    从官方 assets.jar 导出的 530 个原版 PUA 图标
   sprite_index.json     贴图名 → 相对路径索引（blocks/items/aux/all）
   test/parse_test.mjs   Node 一致性测试 + 渲染器/PUA 单测
   package.json          {"type":"module"}
@@ -120,7 +123,20 @@ UI emoji → 去掉。
 > 素材均来自 Mindustry 仓库 / 发布包：`core/assets/icons/icons.properties`
 > 与 `core/assets/fonts/icon.ttf`（此处置于 `assets/fonts/`）。
 
-## 五、输入即解析与持久化缓存
+## 五、图标与耗材数据
+
+- **原版图标 `assets/icons/<码点>.png`**：从官方 `assets.jar` 导出 530 个 PUA 内容图标，
+  补齐构建期合成的 `-ui` 区域（如 smite / renale / metal-tiles-13 等仓库中无源文件的图标）。
+  `js/icons_data.js` 的 `ICON_LOCAL_CODES` 记录这些码点；`richText` 对命中码点优先使用
+  本地 `assets/icons/<码点>.png`（离线可用），并把原贴图 CDN 地址写入 `data-fb` 作为
+  `onerror` 兜底；未命中的码点仍走 `resolveIcon` 的 raw-sprite 解析（`assets/sprites` 或 CDN）。
+- **耗材 `js/requirements_data.js`**：`BLOCK_REQUIREMENTS`（231 个方块）来自 Mindustry
+  `Blocks.java` 的 `requirements(...)`，与游戏 `Schematic.requirements()` 一致
+  （把每个方块的 requirements 直接累加，无倍率）；`ITEM_CN` 为官方中文名。
+  渲染完成后，`js/requirements.js` 的 `computeRequirements()` / `requirementsList()`
+  累加并在页面显示「耗材」面板（物品图标 + 中文名 + ×数量，按数量降序）。
+
+## 六、输入即解析与持久化缓存
 
 ### 输入即解析 + 预加载
 - 在文本框 `input`、文件选择 `change`、拖拽 `drop` 三处加了 **350ms 防抖自动解析**：
@@ -142,7 +158,7 @@ UI emoji → 去掉。
   `fetch` + 会话内内存缓存，不报错。
 - 状态栏会显示「（缓存命中 X 张）」；页脚「清除缓存」可删除 `msch-cache-v1` 与时间戳。
 
-## 六、本地预览
+## 七、本地预览
 
 ```bash
 cd web
@@ -153,11 +169,11 @@ python3 -m http.server 8000
 直接双击 `index.html`（`file://`）也能打开界面，但浏览器会因同源策略拦截
 本地文件读取；请务必用上面的 `http.server` 方式预览。
 
-## 七、运行测试
+## 八、运行测试
 
 ```bash
 cd web
-node --check js/data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/app.js
+node --check js/data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/requirements.js js/requirements_data.js js/app.js
 node test/parse_test.mjs
 ```
 
@@ -167,12 +183,12 @@ node test/parse_test.mjs
 与 PUA 图标单测（`resolveIcon` 锚点、`richText`/`plainTextWithIcons`）。
 需要 Node 18+（内置 `DecompressionStream`）。
 
-## 八、浏览器要求
+## 九、浏览器要求
 
 依赖原生 `DecompressionStream('deflate')` 解压蓝图，需较新版本的
 Chrome / Edge / Safari / Firefox。若浏览器过旧，页面会给出明确中文提示。
 
-## 九、许可证
+## 十、许可证
 
 **MIT License**（详见根目录 [LICENSE](LICENSE) 文件）。
 

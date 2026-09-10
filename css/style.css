@@ -408,6 +408,54 @@ h1 .sub {
   gap: 3px;
 }
 
+/* 耗材面板 */
+.requirements {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+
+.req-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  min-width: 0;
+}
+
+.req-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  image-rendering: pixelated;
+  object-fit: contain;
+}
+
+.req-name {
+  color: var(--text);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.req-count {
+  color: var(--accent-2);
+  font-weight: 600;
+  font-size: 13px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .requirements {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 footer {
   margin-top: 22px;
   padding-top: 14px;

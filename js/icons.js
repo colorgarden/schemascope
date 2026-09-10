@@ -11,10 +11,12 @@
 // =============================================================================
 
 import { CDN_PREFIX, LOCAL_SPRITE_DIR, BLOCK_CN, CONTENT_CN } from "./data.js";
-import { ICON_BY_CODE } from "./icons_data.js";
+import { ICON_BY_CODE, ICON_LOCAL_CODES } from "./icons_data.js";
 
 // sprite_index.json 中贴图相对路径的基准前缀
 const SPRITE_BASE = "core/assets-raw/";
+// 从官方 assets.jar 导出的原版图标目录（相对站点根）
+const LOCAL_ICON_DIR = "assets/icons/";
 // icon.ttf 覆盖的 UI emoji 码点范围
 export const ICON_FONT_LO = 0xe800;
 export const ICON_FONT_HI = 0xf308;
@@ -90,8 +92,30 @@ function iconImg(icon) {
 }
 
 /**
+ * 本地原版图标（assets/icons/<码点>.png）。CDN 原贴图作为 onerror 兜底；
+ * 若该码点没有可解析的原贴图，则不带 data-fb，仅在加载失败时停止重试。
+ */
+function localIconImg(code) {
+  const icon = resolveIcon(code);
+  const label = icon ? escapeHtml(iconDisplayName(icon)) : "";
+  const local = LOCAL_ICON_DIR + code + ".png";
+  let attrs = "";
+  if (icon && icon.spritePath) {
+    const cdn = CDN_PREFIX + SPRITE_BASE + icon.spritePath;
+    attrs = ` data-fb="${escapeHtml(cdn)}" onerror="this.onerror=null;this.src=this.dataset.fb"`;
+  } else {
+    attrs = ` onerror="this.onerror=null"`;
+  }
+  return (
+    `<img class="msch-icon" src="${local}"${attrs}` +
+    ` alt="${label}" title="${label}" loading="lazy">`
+  );
+}
+
+/**
  * 把文本中的 PUA 内容图标替换为 <img class="msch-icon" src="…">。
- * 查不到映射的 PUA 字符保留原样（交给 MindustryIcons 字体）；其余文本做 HTML 转义。
+ * 首选本地导出的原版图标 assets/icons/<码点>.png；否则退回 raw-sprite 解析（本地/CDN）。
+ * 完全解析不到的 PUA 字符保留原样（交给 MindustryIcons 字体）；其余文本做 HTML 转义。
  */
 export function richText(text) {
   const s = String(text == null ? "" : text);
@@ -99,6 +123,10 @@ export function richText(text) {
   for (let i = 0; i < s.length; i++) {
     const code = s.charCodeAt(i);
     if (code >= 0xe000 && code <= 0xf8ff) {
+      if (ICON_LOCAL_CODES.has(code)) {
+        out += localIconImg(code);
+        continue;
+      }
       const icon = resolveIcon(code);
       if (icon && icon.spritePath) {
         out += iconImg(icon);

@@ -23,7 +23,9 @@ import {
 } from "../js/render.js";
 import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN } from "../js/data.js";
 import { setIconIndex, resolveIcon, richText, plainTextWithIcons, ICON_FONT_LO } from "../js/icons.js";
+import { ICON_BY_CODE, ICON_LOCAL_CODES } from "../js/icons_data.js";
 import { simpleHash, createPrefetchManager } from "../js/prefetch.js";
+import { computeRequirements, requirementsList } from "../js/requirements.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -287,10 +289,33 @@ function testIcons() {
   );
   check("resolveIcon(999999) = null", resolveIcon(999999) === null);
 
-  // richText
+  // richText —— 本地原版图标优先
   const rt = richText(String.fromCharCode(63528));
-  check("richText(63528) 含 img 与 liquid-water", rt.includes("msch-icon") && rt.includes("liquid-water"), rt);
+  check("richText(63528) 用本地图标", rt.includes('src="assets/icons/63528.png"'), rt);
+  check("richText(63528) 含 img 且 data-fb 指原贴图", rt.includes('class="msch-icon"') && rt.includes("liquid-water"), rt);
   check("richText(63528) 含中文 alt 水", rt.includes('alt="水"'), rt);
+  check("richText(63465) 本地图标", richText(String.fromCharCode(63465)).includes('src="assets/icons/63465.png"'));
+  check("richText(63084) 本地图标", richText(String.fromCharCode(63084)).includes('src="assets/icons/63084.png"'));
+
+  // 非本地码点：走 raw-sprite 逻辑
+  check("ICON_LOCAL_CODES 共 530 个", ICON_LOCAL_CODES.size === 530, `size=${ICON_LOCAL_CODES.size}`);
+  check("本地图标文件存在", fs.existsSync(path.join(__dirname, "../assets/icons/63528.png")));
+  let rawCode = null;
+  for (const code of Object.keys(ICON_BY_CODE)) {
+    const c = Number(code);
+    if (ICON_LOCAL_CODES.has(c)) continue;
+    const ic = resolveIcon(c);
+    if (ic && ic.spritePath) {
+      rawCode = c;
+      break;
+    }
+  }
+  check("存在走 raw-sprite 的非本地码点", rawCode !== null, `rawCode=${rawCode}`);
+  if (rawCode !== null) {
+    const rawHtml = richText(String.fromCharCode(rawCode));
+    check(`richText(${rawCode}) 走 raw-sprite`, rawHtml.includes("assets/sprites/") && !rawHtml.includes("assets/icons/"), rawHtml);
+  }
+
   const emoji = String.fromCharCode(59394); // 0xE802
   check("richText(emoji) 保留原字符", richText(emoji) === emoji, richText(emoji));
   check("richText 普通中文不受影响", richText("接收台 ABC 123") === "接收台 ABC 123");
@@ -301,13 +326,13 @@ function testIcons() {
   check("plainTextWithIcons(emoji) → 去掉", plainTextWithIcons("A" + emoji + "B") === "AB");
   check("plainTextWithIcons 普通文本原样", plainTextWithIcons("接收台") === "接收台");
 
-  // 集成：示例信息板原文里的 U+F828 应渲染成水图标
+  // 集成：示例信息板原文里的 U+F828 应渲染成本地水图标
   const msg = globalThis.__SCHEM.tiles.find((t) => t.block === "message");
   const hasWaterChar = msg && msg.config && msg.config.includes(String.fromCharCode(63528));
   check("示例信息板含 U+F828(水)", !!hasWaterChar);
   if (hasWaterChar) {
     const html = richText(msg.config);
-    check("信息板 richText 含水图标", html.includes("msch-icon") && html.includes("liquid-water"));
+    check("信息板 richText 含水图标", html.includes("msch-icon") && html.includes("assets/icons/63528.png"));
   }
 }
 
@@ -369,6 +394,36 @@ async function testPrefetch() {
 }
 
 // -----------------------------------------------------------------------------
+// 5. 蓝图总耗材计算单测
+// -----------------------------------------------------------------------------
+function testRequirements() {
+  console.log("== 耗材计算测试 ==");
+  const tiles = globalThis.__SCHEM.tiles;
+  const totals = computeRequirements(tiles);
+  const expected = {
+    copper: 902,
+    titanium: 560,
+    graphite: 453,
+    lead: 207,
+    metaglass: 136,
+    silicon: 128,
+    thorium: 50,
+  };
+  check(
+    "耗材物品种类数",
+    totals.size === Object.keys(expected).length,
+    `got=${JSON.stringify(Object.fromEntries(totals))}`
+  );
+  for (const [item, n] of Object.entries(expected)) {
+    check(`耗材 ${item} = ${n}`, totals.get(item) === n, `got=${totals.get(item)}`);
+  }
+  const list = requirementsList(tiles);
+  check("耗材按数量降序", list.length > 0 && list.every((e, i) => i === 0 || list[i - 1].count >= e.count), list.map((e) => `${e.item}:${e.count}`).join(","));
+  check("耗材中文名（titanium→钛）", list.some((e) => e.item === "titanium" && e.name === "钛"));
+  check("无数据方块被跳过", computeRequirements([{ block: "liquid-source" }, { block: "not-a-block" }]).size === 0);
+}
+
+// -----------------------------------------------------------------------------
 // 入口
 // -----------------------------------------------------------------------------
 async function main() {
@@ -383,6 +438,7 @@ async function main() {
   testRenderUnits();
   testIcons();
   await testPrefetch();
+  testRequirements();
 
   console.log("");
   console.log(`结果：PASS ${pass}，FAIL ${fail}`);
