@@ -26,7 +26,6 @@
         选择文件
         <input id="file-input" type="file" accept=".txt,.msch,text/plain,application/octet-stream" hidden>
       </label>
-      <button id="demo-btn" class="btn ghost">载入示例蓝图</button>
       <button id="parse-btn" class="btn primary">解析并渲染</button>
     </div>
   </section>
@@ -65,6 +64,10 @@
       <span>尺寸：<b id="meta-size">—</b></span>
       <span>方块：<b id="meta-count">—</b></span>
       <span>处理器：<b id="meta-proc">—</b></span>
+    </div>
+    <div id="labels-wrap" class="labels" style="display:none">
+      <span class="labels-title">标签</span>
+      <span id="labels"></span>
     </div>
   </section>
 
@@ -110,8 +113,6 @@
   </div>
 </div>
 
-<!-- demo.js 为普通脚本，先于模块执行，向 window 写入示例蓝图 -->
-<script src="js/demo.js"></script>
 <script type="module" src="js/app.js"></script>
 </body>
 </html>

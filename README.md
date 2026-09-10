@@ -15,15 +15,17 @@
 ```
 web/
   index.html            页面入口
-  css/style.css         深色中文界面样式
+  css/style.css         深色中文界面样式（含 MindustryIcons @font-face）
   js/data.js            常量与中文映射（TILE/LAYERS/BLOCK_CN/CONTENT_CN/…）
   js/inflate.js         zlib 解压封装（DecompressionStream）
   js/parser.js          容器解析 + TypeIO + contentMap + 处理器逻辑提取
   js/render.js          渲染器（与 msch.py 像素级一致）
+  js/icons.js           PUA 内容图标解析 + richText 富文本
+  js/icons_data.js      PUA 码点表（由 icons.properties 生成）
   js/app.js             UI 逻辑
-  js/demo.js            window.DEMO_SCHEMATIC（“载入示例蓝图”按钮使用）
-  sprite_index.json     贴图名 → 相对路径索引
-  test/parse_test.mjs   Node 一致性测试
+  assets/fonts/icon.ttf UI emoji 字体（MindustryIcons）
+  sprite_index.json     贴图名 → 相对路径索引（blocks/items/aux/all）
+  test/parse_test.mjs   Node 一致性测试 + 渲染器/PUA 单测
   package.json          {"type":"module"}
 ```
 
@@ -80,14 +82,43 @@ https://cdn.jsdelivr.net/gh/Anuken/Mindustry@master/ + 相对路径
     "sprites_base": "core/assets-raw/",
     "blocks": { "mass-driver": "sprites/blocks/distribution/mass-driver.png" },
     "items":  { "item-copper": "sprites/items/item-copper.png" },
-    "aux":    { "laser": "sprites/effects/laser.png" }
+    "aux":    { "laser": "sprites/effects/laser.png" },
+    "all":    { "gamma": "sprites/units/gamma.png" }
   }
   ```
+  - `blocks`/`items`/`aux`：渲染与贴图加载使用（保持不变）。
+  - `all`：`sprites/**/*.png` 的「文件名(去扩展名) → 相对路径」全量索引，
+    供 PUA 内容图标解析使用；重名取第一个。
   `schematic-background` 比较特殊，位于 `core/assets/`（非 assets-raw），
   已在 `AUX_PATHS` 中用 `[base, path]` 形式配置。
-- **重新生成 `sprite_index.json`**：可从 Mindustry 仓库的贴图目录重新扫描后覆盖本文件。
+- **重新生成 `sprite_index.json`**：可从 Mindustry 仓库的贴图目录（`tree.json`）重新扫描后覆盖本文件。
 
-## 四、本地预览
+## 四、图标字符处理（PUA）
+
+游戏的消息 / 标签文本里会出现私用区字符（U+E000–U+F8FF），分两类：
+
+1. **内容图标**：物品 / 液体 / 方块 / 单位等，由 `icons/icons.properties`
+   （格式 `十进制码点=名称|图集区域名`）定义，游戏启动时把区域注册为字体字形。
+   前端不依赖静态字体，而是查贴图后用 `<img class="msch-icon">` 呈现：
+   - 数据来源：`icons.properties` → `js/icons_data.js`（`ICON_BY_CODE`，626 条）。
+   - 解析：`js/icons.js` 的 `resolveIcon(code)`；区域名去掉结尾 `-ui` 得 base，
+     依次尝试 `base` 及其去前缀（`block-`/`unit-`/`item-`/`status-`/`team-`）形式，
+     在 `sprite_index.json` 的 `all`/`blocks`/`items` 中查路径。
+   - 例：`63528` → `water` / `liquid-water` → `sprites/items/liquid-water.png`。
+2. **UI emoji**（fontgen 那批，如左右箭头）：在静态字体
+   `assets/fonts/icon.ttf`（U+E800–U+F308，137 个字形）里，由 CSS
+   `@font-face { font-family:"MindustryIcons" }` 渲染，并挂在正文/代码等
+   font-family 回退链末尾。
+
+展示游戏原文的 HTML 上下文（信息板弹窗、信息板 tooltip、处理器代码弹窗、
+蓝图标签 `tags.labels`）统一经 `richText()` 渲染；`<img>` 加载失败会回退。
+原生 `title` 等纯文本上下文用 `plainTextWithIcons()`：内容图标 → `[官方中文名]`，
+UI emoji → 去掉。
+
+> 素材均来自 Mindustry 仓库 / 发布包：`core/assets/icons/icons.properties`
+> 与 `core/assets/fonts/icon.ttf`（此处置于 `assets/fonts/`）。
+
+## 五、本地预览
 
 ```bash
 cd web
@@ -98,25 +129,26 @@ python3 -m http.server 8000
 直接双击 `index.html`（`file://`）也能打开界面，但浏览器会因同源策略拦截
 本地文件读取；请务必用上面的 `http.server` 方式预览。
 
-## 五、运行测试
+## 六、运行测试
 
 ```bash
 cd web
-node --check js/data.js js/inflate.js js/parser.js js/render.js js/app.js js/demo.js
+node --check js/data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/app.js
 node test/parse_test.mjs
 ```
 
 `test/parse_test.mjs` 会读取 `/storage/emulated/0/蓝图.txt` 与 `蓝图.json`
 （可在文件顶部修改路径），逐字段比对解析结果，并运行渲染器关键算法单测
-（footprint/中心坐标、多层叠加、描边膨胀、flat-top 光束采样、桥配对）。
+（footprint/中心坐标、多层叠加、描边膨胀、flat-top 光束采样、桥配对）
+与 PUA 图标单测（`resolveIcon` 锚点、`richText`/`plainTextWithIcons`）。
 需要 Node 18+（内置 `DecompressionStream`）。
 
-## 六、浏览器要求
+## 七、浏览器要求
 
 依赖原生 `DecompressionStream('deflate')` 解压蓝图，需较新版本的
 Chrome / Edge / Safari / Firefox。若浏览器过旧，页面会给出明确中文提示。
 
-## 七、许可证
+## 八、许可证
 
 **MIT License**（详见根目录 [LICENSE](LICENSE) 文件）。
 

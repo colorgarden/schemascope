@@ -17,6 +17,7 @@ import {
 } from "./data.js";
 import { parseSchematic, extractLogic, isProcessor } from "./parser.js";
 import { renderSchematic, getSprite, makePlaceholder } from "./render.js";
+import { setIconIndex, richText, plainTextWithIcons } from "./icons.js";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -26,7 +27,6 @@ const els = {
   input: $("input-text"),
   file: $("file-input"),
   parseBtn: $("parse-btn"),
-  demoBtn: $("demo-btn"),
   scale: $("scale"),
   bgMode: $("bg-mode"),
   grid: $("grid"),
@@ -43,6 +43,8 @@ const els = {
   metaSize: $("meta-size"),
   metaCount: $("meta-count"),
   metaProc: $("meta-proc"),
+  labelsWrap: $("labels-wrap"),
+  labels: $("labels"),
   exportBtn: $("export-btn"),
   tip: $("tip"),
   overlay: $("overlay"),
@@ -325,6 +327,9 @@ function buildHotspots(schem, layout, tiles) {
     const div = document.createElement("div");
     div.className = "hotspot" + (tiles[idx].kind ? " has" : "");
     div.dataset.i = String(idx);
+    // 原生 title 无法放 HTML：图标用 [中文名] 文本降级
+    const tt = tiles[idx];
+    div.title = `${tt.cn} (${tt.x},${tt.y}) 旋转${tt.rot}` + (tt.tip ? " — " + plainTextWithIcons(tt.tip) : "");
     div.style.left = left.toFixed(4) + "%";
     div.style.top = top.toFixed(4) + "%";
     div.style.width = wid.toFixed(4) + "%";
@@ -340,7 +345,9 @@ function buildHotspots(schem, layout, tiles) {
 
 function showTip(i, ev) {
   const t = current.tiles[i];
-  const html = `<span class="k">${esc(t.cn)}</span> (${t.x},${t.y}) 旋转${t.rot}` + (t.tip ? "<br>" + esc(t.tip) : "");
+  const html =
+    `<span class="k">${esc(t.cn)}</span> (${t.x},${t.y}) 旋转${t.rot}` +
+    (t.tip ? "<br>" + richText(t.tip) : "");
   els.tip.innerHTML = html;
   els.tip.style.display = "block";
   moveTip(ev);
@@ -367,7 +374,9 @@ function openModal(i) {
   if (!t || !t.kind) return;
   currentText = t.kind === "proc" ? t.code || "" : t.msg || "";
   els.modalTitle.textContent = `${t.cn} (${t.x},${t.y})`;
-  els.modalPre.textContent = currentText;
+  // 正文走 richText：内容图标 → <img>，UI emoji → 字体，其余转义。
+  // currentText 保留原文，供「复制」使用。
+  els.modalPre.innerHTML = richText(currentText);
   els.copyOk.classList.remove("show");
   els.overlay.classList.add("show");
   hideTip();
@@ -428,6 +437,43 @@ function buildProcButtons(procButtons) {
   els.procs.appendChild(frag);
 }
 
+/** 解析 tags.labels：优先 JSON 数组，兜底去括号后按逗号分割。 */
+function parseLabels(raw) {
+  if (!raw) return [];
+  const s = String(raw).trim();
+  if (!s) return [];
+  try {
+    const arr = JSON.parse(s);
+    if (Array.isArray(arr)) return arr.map((x) => String(x)).filter(Boolean);
+  } catch (e) {
+    // 非标准 JSON，走兜底
+  }
+  return s
+    .replace(/^\[|\]$/g, "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function buildLabels(schem) {
+  const labels = parseLabels(schem.tags.labels);
+  if (!labels.length) {
+    els.labelsWrap.style.display = "none";
+    els.labels.replaceChildren();
+    return;
+  }
+  els.labelsWrap.style.display = "flex";
+  const frag = document.createDocumentFragment();
+  for (const label of labels) {
+    const span = document.createElement("span");
+    span.className = "label-chip";
+    // 标签同样是游戏原文，走 richText
+    span.innerHTML = richText(label);
+    frag.appendChild(span);
+  }
+  els.labels.replaceChildren(frag);
+}
+
 function buildLegend(schem) {
   const legend = collectLegend(schem);
   const frag = document.createDocumentFragment();
@@ -467,6 +513,7 @@ async function run(input) {
 
     current = { schem, tiles, layout, name: schem.tags.name || "蓝图" };
     setMeta(schem, procCount);
+    buildLabels(schem);
     buildProcButtons(procButtons);
     buildHotspots(schem, layout, tiles);
     buildLegend(schem);
@@ -494,16 +541,6 @@ els.parseBtn.addEventListener("click", () => {
     return;
   }
   run(text);
-});
-
-els.demoBtn.addEventListener("click", () => {
-  const demo = window.DEMO_SCHEMATIC || "";
-  if (!demo) {
-    showError("示例蓝图未加载（js/demo.js 缺失）。");
-    return;
-  }
-  els.input.value = demo;
-  run(demo);
 });
 
 els.file.addEventListener("change", async () => {
@@ -647,5 +684,6 @@ els.exportBtn.addEventListener("click", () => {
 // 初始化
 (async function init() {
   await loadSpriteIndex();
+  setIconIndex(spriteIndex);
   setStatus("");
 })();

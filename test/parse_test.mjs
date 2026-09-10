@@ -21,7 +21,8 @@ import {
   drawGrid,
   makePlaceholder,
 } from "../js/render.js";
-import { LAYERS, OUTLINE_ICON, TILE } from "../js/data.js";
+import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN } from "../js/data.js";
+import { setIconIndex, resolveIcon, richText, plainTextWithIcons, ICON_FONT_LO } from "../js/icons.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -255,6 +256,61 @@ function testBridgePairs() {
 }
 
 // -----------------------------------------------------------------------------
+// 3. PUA 图标解析 / richText 单测
+// -----------------------------------------------------------------------------
+function testIcons() {
+  console.log("== PUA 图标测试 ==");
+  const index = JSON.parse(fs.readFileSync(path.join(__dirname, "../sprite_index.json"), "utf8"));
+  check("sprite_index 含 all 字段", !!index.all && Object.keys(index.all).length > 2000, `all=${index.all ? Object.keys(index.all).length : 0}`);
+  check("blocks/items 保留", Object.keys(index.blocks).length > 1000 && Object.keys(index.items).length > 10);
+  setIconIndex(index);
+
+  // 解析锚点
+  const w = resolveIcon(63528);
+  check(
+    "resolveIcon(63528) = water/liquid-water",
+    !!w && w.name === "water" && w.region === "liquid-water-ui" && w.spritePath === "sprites/items/liquid-water.png",
+    JSON.stringify(w)
+  );
+  const g = resolveIcon(63465);
+  check(
+    "resolveIcon(63465) = gamma",
+    !!g && g.spritePath === "sprites/units/gamma.png",
+    JSON.stringify(g)
+  );
+  const a = resolveIcon(63084);
+  check(
+    "resolveIcon(63084) = advanced-launch-pad",
+    !!a && a.spritePath === "sprites/blocks/campaign/advanced-launch-pad.png",
+    JSON.stringify(a)
+  );
+  check("resolveIcon(999999) = null", resolveIcon(999999) === null);
+
+  // richText
+  const rt = richText(String.fromCharCode(63528));
+  check("richText(63528) 含 img 与 liquid-water", rt.includes("msch-icon") && rt.includes("liquid-water"), rt);
+  check("richText(63528) 含中文 alt 水", rt.includes('alt="水"'), rt);
+  const emoji = String.fromCharCode(59394); // 0xE802
+  check("richText(emoji) 保留原字符", richText(emoji) === emoji, richText(emoji));
+  check("richText 普通中文不受影响", richText("接收台 ABC 123") === "接收台 ABC 123");
+  check("richText 转义 HTML", richText("<b>&\"") === "&lt;b&gt;&amp;&quot;", richText('<b>&"'));
+
+  // plainTextWithIcons
+  check("plainTextWithIcons(63528) → [水]", plainTextWithIcons(String.fromCharCode(63528)) === "[水]");
+  check("plainTextWithIcons(emoji) → 去掉", plainTextWithIcons("A" + emoji + "B") === "AB");
+  check("plainTextWithIcons 普通文本原样", plainTextWithIcons("接收台") === "接收台");
+
+  // 集成：示例信息板原文里的 U+F828 应渲染成水图标
+  const msg = globalThis.__SCHEM.tiles.find((t) => t.block === "message");
+  const hasWaterChar = msg && msg.config && msg.config.includes(String.fromCharCode(63528));
+  check("示例信息板含 U+F828(水)", !!hasWaterChar);
+  if (hasWaterChar) {
+    const html = richText(msg.config);
+    check("信息板 richText 含水图标", html.includes("msch-icon") && html.includes("liquid-water"));
+  }
+}
+
+// -----------------------------------------------------------------------------
 // 入口
 // -----------------------------------------------------------------------------
 async function main() {
@@ -267,6 +323,7 @@ async function main() {
   globalThis.__EXP_TILES = JSON.parse(fs.readFileSync(IN_JSON, "utf8")).tiles;
   globalThis.__SCHEM = await parseSchematic(fs.readFileSync(IN_TXT, "utf8"));
   testRenderUnits();
+  testIcons();
 
   console.log("");
   console.log(`结果：PASS ${pass}，FAIL ${fail}`);

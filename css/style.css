@@ -14,6 +14,13 @@
   --danger: #f87171;
 }
 
+/* Mindustry UI emoji 字体（fontgen 生成，U+E800–U+F308 共 137 个字形） */
+@font-face {
+  font-family: "MindustryIcons";
+  src: url("../assets/fonts/icon.ttf") format("truetype");
+  font-display: swap;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -25,7 +32,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif, "MindustryIcons";
   -webkit-text-size-adjust: 100%;
 }
 
@@ -366,6 +373,41 @@ h1 .sub {
   font-weight: 600;
 }
 
+/* PUA 内容图标（由 richText 生成的 <img>） */
+.msch-icon {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  image-rendering: pixelated;
+  object-fit: contain;
+}
+
+/* 蓝图标签（tags.labels） */
+.labels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.labels-title {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.label-chip {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12.5px;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
 footer {
   margin-top: 22px;
   padding-top: 14px;
@@ -468,7 +510,8 @@ footer p {
   padding: 14px 16px;
   font-size: 12.5px;
   line-height: 1.6;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace,
+    "MindustryIcons";
   white-space: pre;
   color: #d7e0ea;
   tab-size: 4;
