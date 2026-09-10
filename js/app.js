@@ -17,7 +17,7 @@ import {
 } from "./data.js";
 import { parseSchematic, extractLogic, isProcessor } from "./parser.js";
 import { renderSchematic, getSprite, makePlaceholder } from "./render.js";
-import { setIconIndex, richText, plainTextWithIcons } from "./icons.js";
+import { setIconIndex, richText, plainTextWithIcons, itemIconSrc } from "./icons.js";
 import { simpleHash, createPrefetchManager } from "./prefetch.js";
 import { fetchCached, clearPersistentCache, cacheInfo } from "./cache.js";
 import { requirementsList } from "./requirements.js";
@@ -510,15 +510,17 @@ function buildRequirements(schem) {
   for (const { item, name, count } of list) {
     const spriteName = "item-" + item;
     const rel = spriteRelPath(spriteName);
-    const local = LOCAL_SPRITE_DIR + spriteName + ".png";
+    // 优先用与文本图标同一套的原版图标文件（assets/icons/<码点>.png），
+    // 没有时回退到 item-<name> 贴图（本地 → CDN）。
+    const fb = rel ? CDN_PREFIX + rel.base + rel.path : null;
+    const src = itemIconSrc(item) || LOCAL_SPRITE_DIR + spriteName + ".png";
     let img;
-    if (rel) {
-      const cdn = CDN_PREFIX + rel.base + rel.path;
+    if (fb) {
       img =
-        `<img class="req-icon" src="${local}" data-fb="${cdn}"` +
+        `<img class="req-icon" src="${src}" data-fb="${fb}"` +
         ` alt="${esc(name)}" loading="lazy" onerror="this.onerror=null;this.src=this.dataset.fb">`;
     } else {
-      img = `<img class="req-icon" src="${local}" alt="${esc(name)}" loading="lazy" onerror="this.onerror=null">`;
+      img = `<img class="req-icon" src="${src}" alt="${esc(name)}" loading="lazy" onerror="this.onerror=null">`;
     }
     const div = document.createElement("div");
     div.className = "req-item";

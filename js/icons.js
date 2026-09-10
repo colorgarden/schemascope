@@ -74,6 +74,31 @@ export function iconDisplayName(icon) {
   return BLOCK_CN[icon.name] || CONTENT_CN[icon.name] || icon.name;
 }
 
+// -----------------------------------------------------------------------------
+// 耗材面板：物品名 → 原版图标文件
+// -----------------------------------------------------------------------------
+
+/** 物品名 → 私用区码点（icons.properties 中 region 以 item- 开头的条目）。 */
+export const ITEM_ICON_CODE = (() => {
+  const m = new Map();
+  for (const [code, ent] of Object.entries(ICON_BY_CODE)) {
+    if (ent && ent[1] && ent[1].startsWith("item-")) m.set(ent[0], Number(code));
+  }
+  return m;
+})();
+
+/**
+ * 物品的本地原版图标 URL（与文本内图标同一套 assets/icons/<码点>.png）。
+ * @returns {string|null} 如 "assets/icons/63544.png"；无对应图标返回 null（回退贴图）。
+ */
+export function itemIconSrc(item) {
+  const code = ITEM_ICON_CODE.get(item);
+  if (code != null && ICON_LOCAL_CODES && ICON_LOCAL_CODES.has(code)) {
+    return LOCAL_ICON_DIR + code + ".png";
+  }
+  return null;
+}
+
 function escapeHtml(s) {
   return String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }

@@ -22,7 +22,7 @@ import {
   makePlaceholder,
 } from "../js/render.js";
 import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN } from "../js/data.js";
-import { setIconIndex, resolveIcon, richText, plainTextWithIcons, ICON_FONT_LO } from "../js/icons.js";
+import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, ICON_FONT_LO } from "../js/icons.js";
 import { ICON_BY_CODE, ICON_LOCAL_CODES } from "../js/icons_data.js";
 import { simpleHash, createPrefetchManager } from "../js/prefetch.js";
 import { computeRequirements, requirementsList } from "../js/requirements.js";
@@ -334,6 +334,13 @@ function testIcons() {
     const html = richText(msg.config);
     check("信息板 richText 含水图标", html.includes("msch-icon") && html.includes("assets/icons/63528.png"));
   }
+
+  // 耗材图标：物品名 → 与文本图标同一套的本地原版图标
+  check("itemIconSrc(copper) = assets/icons/63544.png", itemIconSrc("copper") === "assets/icons/63544.png", String(itemIconSrc("copper")));
+  check("itemIconSrc(titanium) = assets/icons/63538.png", itemIconSrc("titanium") === "assets/icons/63538.png", String(itemIconSrc("titanium")));
+  check("itemIconSrc(surge-alloy) = assets/icons/63532.png", itemIconSrc("surge-alloy") === "assets/icons/63532.png", String(itemIconSrc("surge-alloy")));
+  check("itemIconSrc(未知物品) = null", itemIconSrc("not-an-item") === null);
+  check("耗材物品全部有原版图标", ["copper","titanium","graphite","lead","metaglass","silicon","thorium"].every((it) => itemIconSrc(it)), "缺: " + ["copper","titanium","graphite","lead","metaglass","silicon","thorium"].filter((it) => !itemIconSrc(it)));
 }
 
 // -----------------------------------------------------------------------------
