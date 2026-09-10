@@ -8,6 +8,8 @@
 - 可直接挂到 **GitHub Pages**，也可用 `python3 -m http.server` 本地打开。
 - 所有资源均为**相对路径**，部署在子路径（如 `https://用户名.github.io/仓库名/`）也能正常工作。
 
+> **声明**：本项目由 **AI 生成**（AI 辅助设计与编写），仅供学习与个人使用。
+
 ## 目录结构
 
 ```
@@ -113,3 +115,9 @@ node test/parse_test.mjs
 
 依赖原生 `DecompressionStream('deflate')` 解压蓝图，需较新版本的
 Chrome / Edge / Safari / Firefox。若浏览器过旧，页面会给出明确中文提示。
+
+## 七、许可证
+
+**MIT License**（详见根目录 [LICENSE](LICENSE) 文件）。
+
+本项目由 **AI 生成**，可自由使用、修改与分发，请保留版权声明。
