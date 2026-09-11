@@ -27,7 +27,7 @@ import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resol
 import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260910m";
+const APP_VERSION = "20260911a";
 
 // -----------------------------------------------------------------------------
 // DOM
