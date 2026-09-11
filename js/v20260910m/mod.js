@@ -109,6 +109,16 @@ function basename(path) {
   return i >= 0 ? path.slice(i + 1) : path;
 }
 
+/** "#rrggbb" / "rrggbb" → [r,g,b]；无效返回 null。 */
+export function parseHexColor(v) {
+  if (v == null) return null;
+  const s = String(v).trim().replace(/^#/, "");
+  const m = /^([0-9a-fA-F]{6})$/.exec(s);
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
 /**
  * 模组方块贴图候选名：给定名；若以某个已加载模组名 + "-" 开头，再去前缀尝试。
  * 模组名长者优先（更具体的前缀先剥）。最后追加各候选名的 `<c>1` 变体，
@@ -146,7 +156,37 @@ export function modItemCandidates(name) {
  * 火焰/发光/工作态等一律跳过。无 drawer/无有效项时按 type 默认。
  * @returns {Array<string|{name:string,dx:number,dy:number,rot:number}>}
  */
-export function drawerStaticLayers(def) {
+/** 无 `drawer` 字段时的类型默认层（对照原版各类 draw；键为小写 type）。
+ *  MassDriver 等以 `-base` 作为垫底；工作态效果类（火焰/发光/护盾/脉动/冷却液）不补层。 */
+const NO_DRAWER_SUFFIXES = {
+  drill: ["-rotator", "-top"],
+  burstdrill: ["-rotator", "-top"],
+  solidpump: ["-rotator", "-top"],
+  unitfactory: ["-top"],
+  unitassembler: ["-top"],
+  reconstructor: ["-top"],
+  constructor: ["-top"],
+  thruster: ["-top"],
+  lightblock: ["-top"],
+  liquidturret: ["-top"],
+  payloadrouter: ["-top"],
+  massdriver: ["-base"],
+  powerturret: ["-base"],
+  itemturret: ["-base"],
+  pointdefenseturret: ["-base"],
+  radar: ["-base"],
+  genericcrafter: [],
+  attributecrafter: [],
+  heatcrafter: [],
+  forceprojector: [],
+  mendprojector: [],
+  overdriveprojector: [],
+  nuclearreactor: [],
+  payloadconveyor: [],
+  impactreactor: [],
+};
+
+export function drawerStaticLayers(def, spriteExists) {
   const base = def && def.base ? String(def.base) : "";
   const out = [];
   const seen = new Set();
@@ -206,10 +246,27 @@ export function drawerStaticLayers(def) {
   }
 
   if (out.length === 0) {
-    const type = def && def.type ? String(def.type).toLowerCase() : "block";
-    if (type === "drill" || type === "solidpump") return [base, base + "-rotator", base + "-top"];
-    if (type === "unitfactory") return [base, base + "-top"];
-    return [base];
+    const has = typeof spriteExists === "function" ? spriteExists : () => true;
+    const type = def && def.type ? String(def.type).toLowerCase() : "";
+    if (!type) {
+      // 无类型信息：按贴图存在性沿用旧启发式（-base 垫底、-top 置顶）
+      const parts = [];
+      if (has(base + "-base")) parts.push(base + "-base");
+      parts.push(base);
+      if (has(base + "-top")) parts.push(base + "-top");
+      return parts;
+    }
+    const suffixes = Object.prototype.hasOwnProperty.call(NO_DRAWER_SUFFIXES, type) ? NO_DRAWER_SUFFIXES[type] : [];
+    if (suffixes.includes("-base")) {
+      return has(base + "-base") ? [base + "-base", base] : [base];
+    }
+    const parts = [base];
+    for (const s of suffixes) {
+      if (s === "-base") continue;
+      const n = base + s;
+      if (has(n)) parts.push(n);
+    }
+    return parts;
   }
   return out;
 }
@@ -329,6 +386,29 @@ export async function parseMod(input, fileName = "mod.zip") {
     if (!blocks.has(base)) blocks.set(base, def);
   }
 
+  // ---- 物品（name/color，供配置色与显示名；键含 <mod>- 前缀与裸名） ----
+  const items = new Map();
+  const itemEntries = zip.entries.filter(
+    (e) => !e.isDir && /^content\/items\/.*\.json$/i.test(e.name)
+  );
+  for (const e of itemEntries) {
+    let obj;
+    try {
+      obj = looseJson(await zip.readText(e));
+    } catch (err) {
+      continue;
+    }
+    const base = basename(e.name).replace(/\.json$/i, "");
+    const def = {
+      base,
+      name: obj.name ? String(obj.name) : base,
+      color: parseHexColor(obj.color),
+    };
+    const internal = name + "-" + base;
+    items.set(internal, def);
+    if (!items.has(base)) items.set(base, def);
+  }
+
   // ---- 贴图：只登记中央目录条目，字节按需解压 ----
   const normalEntries = new Map();
   const overrideEntries = new Map();
@@ -358,5 +438,5 @@ export async function parseMod(input, fileName = "mod.zip") {
     }
   }
 
-  return { name, displayName, blocks, sprites, spritesOverride, bundle, fileName, spriteStats };
+  return { name, displayName, blocks, items, sprites, spritesOverride, bundle, fileName, spriteStats };
 }

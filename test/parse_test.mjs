@@ -11,7 +11,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 
-import { parseSchematic, extractLogic, isProcessor, bytesToBase64, isTextBlueprint, parseContentMap, FALLBACK_BLOCKS, LEGACY_BLOCKS } from "../js/v20260910l/parser.js";
+import { parseSchematic, extractLogic, isProcessor, bytesToBase64, isTextBlueprint, parseContentMap, FALLBACK_BLOCKS, LEGACY_BLOCKS } from "../js/v20260910m/parser.js";
 import {
   computeLayout,
   tileFootprint,
@@ -33,18 +33,19 @@ import {
   setModPowerBlocks,
   setModPowerNodes,
   setModLayers,
+  setModColors,
   nodeLaserOpts,
-} from "../js/v20260910l/render.js";
-import { blockDisplayName, modNameCandidates, spriteDisplayName } from "../js/v20260910l/names.js";
-import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN, CONTENT_COLORS, CONFIG_UNDERLAY, CONFIG_OVERLAY, configSpriteNames } from "../js/v20260910l/data.js";
-import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, ICON_FONT_LO } from "../js/v20260910l/icons.js";
-import { ICON_BY_CODE, ICON_LOCAL_CODES } from "../js/v20260910l/icons_data.js";
-import { simpleHash, createPrefetchManager } from "../js/v20260910l/prefetch.js";
-import { computeRequirements, requirementsList } from "../js/v20260910l/requirements.js";
-import { BLOCK_REQUIREMENTS } from "../js/v20260910l/requirements_data.js";
-import { openZip } from "../js/v20260910l/zip.js";
-import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers, looseJson, parseRequirements } from "../js/v20260910l/mod.js";
-import { CN_BLOCKS } from "../js/v20260910l/cn_data.js";
+} from "../js/v20260910m/render.js";
+import { blockDisplayName, modNameCandidates, spriteDisplayName } from "../js/v20260910m/names.js";
+import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN, CONTENT_COLORS, CONFIG_UNDERLAY, CONFIG_OVERLAY, configSpriteNames } from "../js/v20260910m/data.js";
+import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, ICON_FONT_LO } from "../js/v20260910m/icons.js";
+import { ICON_BY_CODE, ICON_LOCAL_CODES } from "../js/v20260910m/icons_data.js";
+import { simpleHash, createPrefetchManager } from "../js/v20260910m/prefetch.js";
+import { computeRequirements, requirementsList } from "../js/v20260910m/requirements.js";
+import { BLOCK_REQUIREMENTS } from "../js/v20260910m/requirements_data.js";
+import { openZip } from "../js/v20260910m/zip.js";
+import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers, looseJson, parseRequirements, parseHexColor } from "../js/v20260910m/mod.js";
+import { CN_BLOCKS } from "../js/v20260910m/cn_data.js";
 import {
   HISTORY_KEY,
   HISTORY_MAX_ITEMS,
@@ -55,7 +56,7 @@ import {
   saveHistory,
   loadHistory,
   formatRelativeTime,
-} from "../js/v20260910l/history.js";
+} from "../js/v20260910m/history.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -558,6 +559,16 @@ async function testMods() {
     const r = parseRequirements(["copper/5", { item: "lead", amount: 5 }]);
     return r.length === 2 && r[0][0] === "copper" && r[0][1] === 5 && r[1][0] === "lead" && r[1][1] === 5;
   })());
+  check("parseHexColor 16进制", (() => {
+    const c1 = parseHexColor("00EE00");
+    const c2 = parseHexColor("#596ab8");
+    return (
+      JSON.stringify(c1) === JSON.stringify([0, 238, 0]) &&
+      JSON.stringify(c2) === JSON.stringify([89, 106, 184]) &&
+      parseHexColor("zzz") === null &&
+      parseHexColor(null) === null
+    );
+  })());
   check(
     "modSpriteCandidates 去模组前缀",
     JSON.stringify(modSpriteCandidates("饱和火力-前沿实验室", ["饱和火力"]).slice(0, 2)) ===
@@ -636,6 +647,10 @@ async function testMods() {
     check("饱和火力 blocks=303", modBlockCount(m) === 303, `blocks=${modBlockCount(m)}`);
     check("饱和火力 sprites≥2000（含 override）", m.sprites.size >= 2000, `sprites=${m.sprites.size}`);
     check("饱和火力 spritesOverride 条目=12", m.spritesOverride.size === 12, `override=${m.spritesOverride.size}`);
+    check("饱和火力 items 一级协议（名称/颜色）", (() => {
+      const it = m.items && (m.items.get("饱和火力-一级协议") || m.items.get("一级协议"));
+      return !!it && it.name === "初级协议" && JSON.stringify(it.color) === JSON.stringify([0, 238, 0]);
+    })(), m.items ? `items=${m.items.size}` : "no items");
     // 懒解压：解析阶段不读贴图字节
     check("饱和火力 懒加载：解析后未解压贴图", m.spriteStats.reads === 0, `reads=${m.spriteStats.reads}`);
     const kbh = [...m.sprites.keys()][0];
@@ -728,6 +743,24 @@ async function testMods() {
       [rOut.rgba[px], rOut.rgba[px + 1], rOut.rgba[px + 2]].join(",")
     );
     setModOutline(new Map());
+
+    // ---- setModColors：模组物品颜色（配置影响贴图着色）----
+    {
+      const w2 = TILE;
+      const center = { w: 10, h: 10, size: 1, rgba: new Uint8ClampedArray(10 * 10 * 4).fill(255), placeholder: false };
+      const body = { w: w2, h: w2, size: 1, rgba: new Uint8ClampedArray(w2 * w2 * 4).fill(80), placeholder: false };
+      const sprites2 = { unloader: body, "unloader-center": center };
+      const schem2 = { width: 1, height: 1, tiles: [{ block: "unloader", x: 0, y: 0, rot: 0, config_type: "content", config: "一级协议" }] };
+      setModColors(new Map([["一级协议", [0, 238, 0]]]));
+      const r2 = renderSchematic(schem2, sprites2, { scale: 1, pad: 0, transparent: true, grid: false });
+      const p2 = (16 * w2 + 16) * 4;
+      check(
+        "模组物品色：装卸器中心 = 物品色",
+        r2.rgba[p2] === 0 && r2.rgba[p2 + 1] === 238 && r2.rgba[p2 + 2] === 0 && r2.rgba[p2 + 3] === 255,
+        [r2.rgba[p2], r2.rgba[p2 + 1], r2.rgba[p2 + 2], r2.rgba[p2 + 3]].join(",")
+      );
+      setModColors(new Map());
+    }
 
     // ---- 模组电力节点（type=PowerNode）----
     const node1 = m.blocks.get("饱和火力-裂位节点");
@@ -1347,6 +1380,12 @@ async function testV0() {
   // 仍兼容非标准旧形式
   const cm2 = parseContentMap("{0:{surge-alloy:12},4:{water:0}}");
   check("contentMap 非标准回退正则", cm2.get("0,12") === "surge-alloy" && cm2.get("4,0") === "water");
+
+  // contentMap 中文键（模组物品场景：官方非严格 JSON，键含中文/模组前缀）
+  const cm3 = parseContentMap("{0:{sand:4,一级协议:37}}");
+  check("contentMap 中文键（非严格）", cm3.get("0,37") === "一级协议" && cm3.get("0,4") === "sand", JSON.stringify([...cm3]));
+  const cm4 = parseContentMap('{"0":{"饱和火力-一级协议":37}}');
+  check("contentMap 引号中文键", cm4.get("0,37") === "饱和火力-一级协议", JSON.stringify([...cm4]));
 }
 
 // -----------------------------------------------------------------------------
@@ -1398,6 +1437,24 @@ function testDrawerLayers() {
   for (const t of ["GenericCrafter", "ForceProjector", "MendProjector", "OverdriveProjector", "ImpactReactor"]) {
     check(`type 默认 ${t} → [base]`, JSON.stringify(drawerStaticLayers({ base: "b", type: t })) === JSON.stringify(["b"]), t);
   }
+
+  // MassDriver 无 drawer：-base 垫底（裂位驱动器场景）
+  L = drawerStaticLayers({ base: "裂位驱动器", type: "MassDriver" }, (n) => n === "裂位驱动器-base");
+  check("type 默认 MassDriver → [base-base, base]", JSON.stringify(L) === JSON.stringify(["裂位驱动器-base", "裂位驱动器"]), JSON.stringify(L));
+  L = drawerStaticLayers({ base: "裂位驱动器", type: "MassDriver" }, () => false);
+  check("MassDriver 无 -base → [base]", JSON.stringify(L) === JSON.stringify(["裂位驱动器"]), JSON.stringify(L));
+  // 无类型信息：按贴图存在性启发式（-base 垫底、-top 置顶）
+  L = drawerStaticLayers({ base: "X" }, (n) => n === "X-top");
+  check("无类型 + 仅 -top → [base, base-top]", JSON.stringify(L) === JSON.stringify(["X", "X-top"]), JSON.stringify(L));
+  L = drawerStaticLayers({ base: "Y" }, (n) => n === "Y-base");
+  check("无类型 + 仅 -base → [base-base, base]", JSON.stringify(L) === JSON.stringify(["Y-base", "Y"]), JSON.stringify(L));
+  // 其它类型默认
+  check("type 默认 UnitAssembler → 两层", JSON.stringify(drawerStaticLayers({ base: "ua", type: "UnitAssembler" })) === JSON.stringify(["ua", "ua-top"]));
+  check("type 默认 LiquidTurret → 两层", JSON.stringify(drawerStaticLayers({ base: "lt", type: "LiquidTurret" })) === JSON.stringify(["lt", "lt-top"]));
+  check("type 默认 PayloadRouter → 两层", JSON.stringify(drawerStaticLayers({ base: "pr", type: "PayloadRouter" })) === JSON.stringify(["pr", "pr-top"]));
+  check("type 默认 PayloadConveyor → [base]", JSON.stringify(drawerStaticLayers({ base: "pc", type: "PayloadConveyor" })) === JSON.stringify(["pc"]));
+  check("type 小写 mendProjector → [base]", JSON.stringify(drawerStaticLayers({ base: "m", type: "mendProjector" })) === JSON.stringify(["m"]));
+  check("type 默认 Drill 过滤缺失层", JSON.stringify(drawerStaticLayers({ base: "d2", type: "Drill" }, (n) => n === "d2-top")) === JSON.stringify(["d2", "d2-top"]));
 
   // 去重：DrawDefault 重复
   L = drawerStaticLayers({ base: "z", type: "GenericCrafter", drawer: ["DrawDefault", "DrawDefault"] });
@@ -1490,8 +1547,8 @@ async function testNet() {
   });
 
   try {
-    const { fetchMindustry, resetProbe, SOURCES, DEFAULT_SOURCES, SOURCE_DEFS, getSourceOrder, setChoiceKey, probeAllSources } = await import("../js/v20260910l/sources.js");
-    const { fetchMindustryCached, spriteCacheKey, resetCacheInfo } = await import("../js/v20260910l/cache.js");
+    const { fetchMindustry, resetProbe, SOURCES, DEFAULT_SOURCES, SOURCE_DEFS, getSourceOrder, setChoiceKey, probeAllSources } = await import("../js/v20260910m/sources.js");
+    const { fetchMindustryCached, spriteCacheKey, resetCacheInfo } = await import("../js/v20260910m/cache.js");
     const A = SOURCES[0];
     const B = SOURCES[1];
     const C = SOURCES[2];

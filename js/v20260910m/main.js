@@ -15,7 +15,7 @@ import {
   configSpriteNames,
 } from "./data.js";
 import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js";
-import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js";
+import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js";
 import { setIconIndex, richText, plainTextWithIcons, itemIconSrc } from "./icons.js";
 import { simpleHash, createPrefetchManager } from "./prefetch.js";
 import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js";
@@ -27,7 +27,7 @@ import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resol
 import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260910l";
+const APP_VERSION = "20260910m";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -107,6 +107,7 @@ let modBridgeNames = new Set(); // 模组桥方块名（内部名与 base）
 let modBlockSizes = new Map(); // 方块名（内部名/base）-> size
 let modRequirementsTable = {}; // 方块名 -> requirements
 let modBundle = new Map(); // bundle key -> value（合并所有模组）
+let modItemNames = new Map(); // 模组物品内部名 -> 显示名（配置提示用）
 
 // -----------------------------------------------------------------------------
 // 贴图加载
@@ -339,16 +340,30 @@ function rebuildModDerived() {
   // 模组多层：按方块 JSON 的 drawer 绘制栈解析静止层（不再用 -base/-top 启发式）
   for (const m of mods) {
     const seen = new Set();
+    const spriteExists = (n) => m.sprites.has(n) || m.spritesOverride.has(n);
     for (const [, def] of m.blocks) {
       if (seen.has(def.base)) continue;
       seen.add(def.base);
-      const layers = drawerStaticLayers(def);
+      const layers = drawerStaticLayers(def, spriteExists);
       if (layers.length > 1 || layers.some((x) => typeof x === "object")) {
         modLayersMap[m.name + "-" + def.base] = layers;
         modLayersMap[def.base] = layers;
       }
     }
   }
+  // 模组物品颜色/显示名（配置影响贴图的着色 & 提示文本）
+  const itemColors = new Map();
+  const itemNames = new Map();
+  for (const m of mods) {
+    if (!m.items) continue;
+    for (const [k, it] of m.items) {
+      if (!it) continue;
+      if (it.color) itemColors.set(k, it.color);
+      if (it.name) itemNames.set(k, it.name);
+    }
+  }
+  modItemNames = itemNames;
+  setModColors(itemColors);
   setModLayers(modLayersMap);
   setModBridges(bridgeMap);
   setModOutline(outlineMap);
@@ -558,7 +573,7 @@ function configSummary(tile) {
   const ct = tile.config_type;
   const val = tile.config;
   if (val === null || val === undefined) return "";
-  if (ct === "content") return CONTENT_CN[val] || val;
+  if (ct === "content") return modItemNames.get(val) || CONTENT_CN[val] || val;
   if (ct === "string") return stripTags(val).trim().replace(/\n/g, " ").slice(0, 40);
   if (ct === "byteArray") return "逻辑代码 " + (val.length || 0) + " 字节";
   if (ct === "point2") return `链接偏移 (${val[0]},${val[1]})`;

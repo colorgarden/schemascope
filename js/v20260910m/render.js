@@ -41,6 +41,18 @@ let MOD_OUTLINE = new Map();
 let MOD_POWER_BLOCKS = new Set();
 // 模组电力节点来源（type 以 "PowerNode" 结尾）：name -> { scale, color1, color2 }
 let MOD_POWER_NODES = new Map();
+// 模组物品颜色：内部名（含/不含模组前缀）-> [r,g,b]（配置影响贴图的着色用）
+let MOD_COLORS = new Map();
+
+/** 注入模组物品颜色表（app.js 在模组变化时调用）。 */
+export function setModColors(map) {
+  MOD_COLORS = map || new Map();
+}
+
+/** 配置内容色：模组物品色 → 官方物品/液体色 → 白。 */
+function contentColor(cfg) {
+  return MOD_COLORS.get(cfg) || CONTENT_COLORS[cfg] || [255, 255, 255];
+}
 
 function toMap(v) {
   if (v instanceof Map) return v;
@@ -648,7 +660,7 @@ function drawConfigUnderlay(buf, cw, ch, t, e, sprites) {
     if (!sp) return;
     blend(buf, cw, ch, e.px + Math.floor((px - sp.w) / 2), e.py + Math.floor((px - sp.h) / 2), sp.rgba, sp.w, sp.h);
   } else {
-    const color = CONTENT_COLORS[cfg] || [255, 255, 255];
+    const color = contentColor(cfg);
     fillRect(buf, cw, ch, e.px, e.py, px, px, [color[0], color[1], color[2], 255]);
   }
 }
@@ -664,7 +676,7 @@ function drawConfigOverlay(buf, cw, ch, t, e, sprites, layers) {
     if (cfg === null) return;
     const sp = getSprite(sprites, t.block + "-center", true);
     if (!sp) return;
-    const color = CONTENT_COLORS[cfg] || [255, 255, 255];
+    const color = contentColor(cfg);
     blend(buf, cw, ch, e.px + Math.floor((px - sp.w) / 2), e.py + Math.floor((px - sp.h) / 2), tintRgba(sp.rgba, color), sp.w, sp.h);
   } else if (kind === "liquidSource") {
     const bottom = getSprite(sprites, "source-bottom", true);
@@ -679,7 +691,7 @@ function drawConfigOverlay(buf, cw, ch, t, e, sprites, layers) {
     } else {
       const fluid = getSprite(sprites, "fluid", true);
       if (fluid) {
-        const color = CONTENT_COLORS[cfg] || [255, 255, 255];
+        const color = contentColor(cfg);
         tileBlit(buf, cw, ch, fluid, e.px, e.py, px, px, tintRgba(fluid.rgba, color));
       }
     }

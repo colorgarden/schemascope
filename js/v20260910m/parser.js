@@ -239,31 +239,47 @@ export function parseContentMap(text) {
   const rev = new Map();
   if (!text) return rev;
   const trimmed = String(text).trim();
-  if (trimmed.startsWith("{")) {
-    try {
-      const obj = JSON.parse(trimmed);
-      for (const [typeKey, nameMap] of Object.entries(obj)) {
-        const ct = Number(typeKey);
-        if (!nameMap || typeof nameMap !== "object") continue;
-        for (const [name, id] of Object.entries(nameMap)) {
-          rev.set(`${ct},${Number(id)}`, name);
-        }
+
+  const take = (obj) => {
+    if (!obj || typeof obj !== "object") return false;
+    let any = false;
+    for (const [typeKey, nameMap] of Object.entries(obj)) {
+      const ct = Number(typeKey);
+      if (!Number.isFinite(ct) || !nameMap || typeof nameMap !== "object") continue;
+      for (const [name, id] of Object.entries(nameMap)) {
+        rev.set(`${ct},${Number(id)}`, name);
+        any = true;
       }
-      return rev;
+    }
+    return any;
+  };
+
+  if (trimmed.startsWith("{")) {
+    // 1) 严格 JSON
+    try {
+      if (take(JSON.parse(trimmed))) return rev;
     } catch (e) {
-      // 非标准 JSON → 回退正则
+      // 继续
+    }
+    // 2) 官方 JsonIO 的非严格 JSON：{0:{sand:4,一级协议:37}}（键未加引号，可能含中文）
+    try {
+      const fixed = trimmed.replace(/([{,]\s*)([^\s"{}\[\],:]+)\s*:/g, '$1"$2":');
+      if (take(JSON.parse(fixed))) return rev;
+    } catch (e2) {
+      // 继续
     }
   }
-  const blockRe = /(\d+):\{([^}]*)\}/g;
-  const itemRe = /([A-Za-z0-9_\-]+):(\d+)/g;
+
+  // 3) 宽松正则兜底（支持中文等任意键名，可带引号）
+  const blockRe = /(\d+)\s*:\s*\{([^}]*)\}/g;
+  const itemRe = /(?:"([^"]+)"|([^:{},\s]+))\s*:\s*(\d+)/g;
   let b;
   while ((b = blockRe.exec(trimmed)) !== null) {
     const ct = Number(b[1]);
-    const body = b[2];
-    let it;
     itemRe.lastIndex = 0;
-    while ((it = itemRe.exec(body)) !== null) {
-      rev.set(`${ct},${Number(it[2])}`, it[1]);
+    let it;
+    while ((it = itemRe.exec(b[2])) !== null) {
+      rev.set(`${ct},${Number(it[3])}`, it[1] !== undefined ? it[1] : it[2]);
     }
   }
   return rev;

@@ -16,23 +16,23 @@
 web/
   index.html            页面入口
   css/style.css         深色中文界面样式（含 MindustryIcons @font-face）
-  js/v20260910l/data.js            常量与中文映射（TILE/LAYERS/BLOCK_CN/CONTENT_CN/…）
-  js/v20260910l/cn_data.js         全量官方中文名（由 bundle_zh_CN.properties 生成）
-  js/v20260910l/inflate.js         zlib 解压封装（DecompressionStream）
-  js/v20260910l/parser.js          容器解析 + TypeIO + contentMap + 处理器逻辑提取
-  js/v20260910l/render.js          渲染器（与 msch.py 像素级一致）
-  js/v20260910l/icons.js           PUA 内容图标解析 + richText 富文本
-  js/v20260910l/icons_data.js      PUA 码点表（由 icons.properties 生成）
-  js/v20260910l/prefetch.js        输入哈希 + 预加载管理器（可单测）
-  js/v20260910l/cache.js           Cache Storage 持久化缓存（v2 + 规范化键 + SWR/TTL）
-  js/v20260910l/sources.js         Mindustry 镜像源（手动选择 + 超时 + 自动切换）
-  js/v20260910l/zip.js             纯 JS zip 读取器（STORED/DEFLATE，可单测）
-  js/v20260910l/mod.js             模组 zip 解析（方块/贴图/bundle，可单测）
-  js/v20260910l/names.js           方块显示名（bundle > JSON name > BLOCK_CN，可单测）
-  js/v20260910l/history.js         本地历史记录（容量策略纯函数，可单测）
-  js/v20260910l/requirements.js    蓝图总耗材计算（可单测）
-  js/v20260910l/requirements_data.js 方块耗材表 BLOCK_REQUIREMENTS + 物品中文名 ITEM_CN
-  js/v20260910l/main.js            入口 UI 逻辑（js 目录随发布整体版本化，路径级缓存穿透）
+  js/v20260910m/data.js            常量与中文映射（TILE/LAYERS/BLOCK_CN/CONTENT_CN/…）
+  js/v20260910m/cn_data.js         全量官方中文名（由 bundle_zh_CN.properties 生成）
+  js/v20260910m/inflate.js         zlib 解压封装（DecompressionStream）
+  js/v20260910m/parser.js          容器解析 + TypeIO + contentMap + 处理器逻辑提取
+  js/v20260910m/render.js          渲染器（与 msch.py 像素级一致）
+  js/v20260910m/icons.js           PUA 内容图标解析 + richText 富文本
+  js/v20260910m/icons_data.js      PUA 码点表（由 icons.properties 生成）
+  js/v20260910m/prefetch.js        输入哈希 + 预加载管理器（可单测）
+  js/v20260910m/cache.js           Cache Storage 持久化缓存（v2 + 规范化键 + SWR/TTL）
+  js/v20260910m/sources.js         Mindustry 镜像源（手动选择 + 超时 + 自动切换）
+  js/v20260910m/zip.js             纯 JS zip 读取器（STORED/DEFLATE，可单测）
+  js/v20260910m/mod.js             模组 zip 解析（方块/贴图/bundle，可单测）
+  js/v20260910m/names.js           方块显示名（bundle > JSON name > BLOCK_CN，可单测）
+  js/v20260910m/history.js         本地历史记录（容量策略纯函数，可单测）
+  js/v20260910m/requirements.js    蓝图总耗材计算（可单测）
+  js/v20260910m/requirements_data.js 方块耗材表 BLOCK_REQUIREMENTS + 物品中文名 ITEM_CN
+  js/v20260910m/main.js            入口 UI 逻辑（js 目录随发布整体版本化，路径级缓存穿透）
   assets/fonts/icon.ttf UI emoji 字体（MindustryIcons）
   assets/icons/*.png    从官方 assets.jar 导出的 530 个原版 PUA 图标
   sprite_index.json     贴图名 → 相对路径索引（blocks/items/aux/all）
@@ -44,7 +44,7 @@ web/
 
 1. **新建仓库**：在 GitHub 上新建一个仓库（例如 `msch-viz`），可设为 Public。
 2. **上传 `web/` 里的内容**：把 `web/` 目录**里面的全部文件**上传到仓库根目录，
-   使仓库根目录下直接有 `index.html`、`css/`、`js/v20260910l/`、`sprite_index.json` 等。
+   使仓库根目录下直接有 `index.html`、`css/`、`js/v20260910m/`、`sprite_index.json` 等。
    - 网页上传：仓库页面 → **Add file → Upload files**，把 `index.html`、`css`、`js`、
      `sprite_index.json`、`README.md`、`package.json` 一起拖进去，Commit。
    - 或用命令行（把 `你的用户名/仓库名` 换成实际值）：
@@ -91,9 +91,9 @@ web/
 
 ## 三、更新贴图源的方法
 
-- **指向别的 CDN / 镜像**：编辑 `js/v20260910l/sources.js` 的 `SOURCES`（按优先级排列），
+- **指向别的 CDN / 镜像**：编辑 `js/v20260910m/sources.js` 的 `SOURCES`（按优先级排列），
   或删除不需要的源；运行时会自动切换并记住最近可用源。
-- **改单个贴图路径**：编辑 `sprite_index.json`（或 `js/v20260910l/data.js` 的 `AUX_PATHS`）。
+- **改单个贴图路径**：编辑 `sprite_index.json`（或 `js/v20260910m/data.js` 的 `AUX_PATHS`）。
   索引结构为：
   ```json
   {
@@ -118,8 +118,8 @@ web/
 1. **内容图标**：物品 / 液体 / 方块 / 单位等，由 `icons/icons.properties`
    （格式 `十进制码点=名称|图集区域名`）定义，游戏启动时把区域注册为字体字形。
    前端不依赖静态字体，而是查贴图后用 `<img class="msch-icon">` 呈现：
-   - 数据来源：`icons.properties` → `js/v20260910l/icons_data.js`（`ICON_BY_CODE`，626 条）。
-   - 解析：`js/v20260910l/icons.js` 的 `resolveIcon(code)`；区域名去掉结尾 `-ui` 得 base，
+   - 数据来源：`icons.properties` → `js/v20260910m/icons_data.js`（`ICON_BY_CODE`，626 条）。
+   - 解析：`js/v20260910m/icons.js` 的 `resolveIcon(code)`；区域名去掉结尾 `-ui` 得 base，
      依次尝试 `base` 及其去前缀（`block-`/`unit-`/`item-`/`status-`/`team-`）形式，
      在 `sprite_index.json` 的 `all`/`blocks`/`items` 中查路径。
    - 例：`63528` → `water` / `liquid-water` → `sprites/items/liquid-water.png`。
@@ -138,21 +138,21 @@ UI emoji → 去掉。
 
 ## 五、图标与耗材数据
 
-- **全量官方中文名 `js/v20260910l/cn_data.js`**：由官方 `bundle_zh_CN.properties` 生成
-  （`CN_BLOCKS` 412 条 / `CN_ITEMS` 22 条 / `CN_LIQUIDS` 11 条）。`js/v20260910l/data.js` 的
+- **全量官方中文名 `js/v20260910m/cn_data.js`**：由官方 `bundle_zh_CN.properties` 生成
+  （`CN_BLOCKS` 412 条 / `CN_ITEMS` 22 条 / `CN_LIQUIDS` 11 条）。`js/v20260910m/data.js` 的
   `BLOCK_CN`/`CONTENT_CN` 以之为准（旧手写小表仅用于补缺，不覆盖官方名），因此
   `overflow-gate`→溢流门、`underflow-gate`→反向溢流门、`duct` 等均有正确中文名。
 - **原版图标 `assets/icons/<码点>.png`**：从官方 `assets.jar` 导出 530 个 PUA 内容图标，
   补齐构建期合成的 `-ui` 区域（如 smite / renale / metal-tiles-13 等仓库中无源文件的图标）。
-  `js/v20260910l/icons_data.js` 的 `ICON_LOCAL_CODES` 记录这些码点；`richText` 对命中码点优先使用
+  `js/v20260910m/icons_data.js` 的 `ICON_LOCAL_CODES` 记录这些码点；`richText` 对命中码点优先使用
   本地 `assets/icons/<码点>.png`（离线可用），并把原贴图 CDN 地址写入 `data-fb` 作为
   `onerror` 兜底；未命中的码点仍走 `resolveIcon` 的 raw-sprite 解析（`assets/sprites` 或 CDN）。
-- **耗材 `js/v20260910l/requirements_data.js`**：`BLOCK_REQUIREMENTS`（231 个方块）来自 Mindustry
+- **耗材 `js/v20260910m/requirements_data.js`**：`BLOCK_REQUIREMENTS`（231 个方块）来自 Mindustry
   `Blocks.java` 的 `requirements(...)`，与游戏 `Schematic.requirements()` 一致
   （把每个方块的 requirements 直接累加，无倍率）；`ITEM_CN` 为官方中文名。
-  渲染完成后，`js/v20260910l/requirements.js` 的 `computeRequirements()` / `requirementsList()`
+  渲染完成后，`js/v20260910m/requirements.js` 的 `computeRequirements()` / `requirementsList()`
   累加并在页面显示「耗材」面板（物品图标 + 中文名 + ×数量，按数量降序）。
-- **配置影响贴图（v159.7 源码行为）**：`js/v20260910l/data.js` 用 `CONFIG_UNDERLAY` / `CONFIG_OVERLAY`
+- **配置影响贴图（v159.7 源码行为）**：`js/v20260910m/data.js` 用 `CONFIG_UNDERLAY` / `CONFIG_OVERLAY`
   描述配置对贴图的影响，`render.js` 在 sprite 层前后绘制：
   - `sorter` / `inverted-sorter` / `item-source`（underlay）：配置为空 → 画 `cross-full`（原色）；
     有内容 → 整格 `TILE×TILE` 填充内容色（`CONTENT_COLORS`）。
@@ -180,7 +180,7 @@ UI emoji → 去掉。
 - **载入方式**：输入区下方「模组」小节，多选或拖拽 `.zip/.jar`；显示名称/内部名 + 方块数 + 贴图数；可单个移除或清除全部。
 - **持久化**：zip 存入 Cache Storage（缓存名 `msch-mods-v1`，key `/__mods__/<文件名>`），
   下次打开自动重新加载；移除/清除时同步删除。
-- **解析**（`js/v20260910l/mod.js` + `js/v20260910l/zip.js`，纯 JS、无第三方库）：
+- **解析**（`js/v20260910m/mod.js` + `js/v20260910m/zip.js`，纯 JS、无第三方库）：
   - `mod.json` 的 `name` 为内部模组名，方块内部名 = `<name>-<文件名去.json>`。
   - 宽松 JSON：支持 `//`、`/* */` 注释、尾随逗号、缺失逗号（部分模组 JSON 不规范）。
   - `requirements` 同时支持 `"item/amount"` 与 `{item,amount}`。
@@ -203,14 +203,14 @@ UI emoji → 去掉。
     均可被电力节点连线（模组节点之间也能互连）。
 - **方块显示名优先级**：模组语言文件 `block.<内部名>.name`（带 `<mod>-` 前缀时也尝试
   `block.<base>.name`）→ 模组 JSON 的 `name` 字段 → 内置 `BLOCK_CN` → 内部名。
-  图例、热区提示、处理器按钮等均使用该显示名（`js/v20260910l/names.js` 的 `blockDisplayName`）。
+  图例、热区提示、处理器按钮等均使用该显示名（`js/v20260910m/names.js` 的 `blockDisplayName`）。
 - **不针对任何具体模组**：桥/质驱/电力节点全部按 JSON `type` 字段（`*Bridge` /
   `MassDriver` / `*PowerNode`）+ 运行时注册判定，代码中不含任何模组名（测试所用真实模组仅作
   fixture）；通用性由合成模组测试固定（任意名字 + 类型即可正确分类/注册/渲染）。
 - **渲染集成**：贴图查找顺序为 内存 → 模组 `sprites-override` → 本地 `assets/sprites` →
   镜像源（超时/自动切换）→ 模组 `sprites` → 占位；模组方块缺失贴图但 JSON 有 `size`
   时按该尺寸占位。
-- **模组多层 = 按 JSON `drawer` 绘制栈解析**（`js/v20260910l/mod.js` 的 `drawerStaticLayers`）：
+- **模组多层 = 按 JSON `drawer` 绘制栈解析**（`js/v20260910m/mod.js` 的 `drawerStaticLayers`）：
   仅保留 `DrawDefault`（本体）与 `DrawRegion`（`base+suffix`，支持 `x`/`y` 偏移 ×4、`rotation` 角度；
   `suffix` 支持中文如 `-顶`/`-底`/`-转`；类型比较大小写不敏感，`DrawMulti.drawers` 递归）；
   火焰/发光/工作态（DrawFlame/DrawGlowRegion/DrawCultivator/DrawWarmupRegion/DrawFade/…）一律跳过。
@@ -246,7 +246,7 @@ UI emoji → 去掉。
 ### 输入即解析 + 预加载
 - 在文本框 `input`、文件选择 `change`、拖拽 `drop` 三处加了 **350ms 防抖自动解析**：
   停止输入后立即在后台解析并预加载贴图，状态栏显示「已解析：N 个方块，预加载贴图 done/total…」。
-- 预加载由 `js/v20260910l/prefetch.js` 的 `createPrefetchManager` 管理：按输入哈希复用已解析结果，
+- 预加载由 `js/v20260910m/prefetch.js` 的 `createPrefetchManager` 管理：按输入哈希复用已解析结果，
   并带竞态保护（输入变化时丢弃旧任务结果）。点击「解析并渲染」时若哈希命中，
   直接复用并 `await` 未完成的加载，通常近乎瞬时完成。
 - 贴图并发批量加载为 **16**。
@@ -267,7 +267,7 @@ UI emoji → 去掉。
 - 解析+渲染成功后写入 `localStorage.msch-history`（JSON 数组，新→旧），条目：
   `{ hash, name, w, h, tiles, time, input }`（`hash` 为输入哈希，`input` 为原始文本）。
 - 同 `hash` 去重并置顶（刷新时间）；点击历史项 = 填入输入框并重新解析渲染。
-- 容量策略（`js/v20260910l/history.js` 纯函数）：单条 `input > 1MB` 不记录；总条数 ≤ **16**；
+- 容量策略（`js/v20260910m/history.js` 纯函数）：单条 `input > 1MB` 不记录；总条数 ≤ **16**；
   总字节（按 `input.length`）≤ **2MB**，超限从最旧淘汰；写入失败（配额）→ 淘汰一半重试一次，
   仍失败静默放弃。
 - UI：「输入蓝图」正下方的「历史记录」小节（PC 左栏同序：输入 → 历史 → 模组 → 渲染选项），列表项显示
@@ -275,7 +275,7 @@ UI emoji → 去掉。
   小节始终显示，空列表时为弱化提示「暂无历史记录，解析蓝图后自动保存到本地」。
 
 ### 持久化缓存（Cache Storage API）
-- `js/v20260910l/cache.js` 用 `caches.open("msch-cache-v2")` 缓存贴图与 `sprite_index.json`：
+- `js/v20260910m/cache.js` 用 `caches.open("msch-cache-v2")` 缓存贴图与 `sprite_index.json`：
   - **命中** → 立即用缓存 Response（blob→`createImageBitmap`），页面刷新后无需重新联网；
   - **stale-while-revalidate**：缓存条目超过 **TTL 7 天**时，先返回缓存、后台 fetch 刷新；
   - **未命中** → 走超时/镜像链路 fetch → **成功才** `cache.put`；失败/超时绝不写缓存。
@@ -343,7 +343,7 @@ python3 -m http.server 8000
 
 ```bash
 cd web
-node --check js/v20260910l/data.js js/v20260910l/cn_data.js js/v20260910l/inflate.js js/v20260910l/parser.js js/v20260910l/render.js js/v20260910l/icons.js js/v20260910l/icons_data.js js/v20260910l/prefetch.js js/v20260910l/cache.js js/v20260910l/sources.js js/v20260910l/zip.js js/v20260910l/mod.js js/v20260910l/requirements.js js/v20260910l/requirements_data.js js/v20260910l/names.js js/v20260910l/history.js js/v20260910l/main.20260910i.js
+node --check js/v20260910m/data.js js/v20260910m/cn_data.js js/v20260910m/inflate.js js/v20260910m/parser.js js/v20260910m/render.js js/v20260910m/icons.js js/v20260910m/icons_data.js js/v20260910m/prefetch.js js/v20260910m/cache.js js/v20260910m/sources.js js/v20260910m/zip.js js/v20260910m/mod.js js/v20260910m/requirements.js js/v20260910m/requirements_data.js js/v20260910m/names.js js/v20260910m/history.js js/v20260910m/main.20260910i.js
 node test/parse_test.mjs
 ```
 
