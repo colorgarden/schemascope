@@ -11,7 +11,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 
-import { parseSchematic, extractLogic, isProcessor, bytesToBase64, isTextBlueprint, parseContentMap, FALLBACK_BLOCKS, LEGACY_BLOCKS } from "../js/v20260911b/parser.js";
+import { parseSchematic, extractLogic, isProcessor, bytesToBase64, isTextBlueprint, parseContentMap, FALLBACK_BLOCKS, LEGACY_BLOCKS } from "../js/parser.js";
 import {
   computeLayout,
   tileFootprint,
@@ -35,17 +35,17 @@ import {
   setModLayers,
   setModColors,
   nodeLaserOpts,
-} from "../js/v20260911b/render.js";
-import { blockDisplayName, modNameCandidates, spriteDisplayName } from "../js/v20260911b/names.js";
-import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN, CONTENT_COLORS, CONFIG_UNDERLAY, CONFIG_OVERLAY, configSpriteNames } from "../js/v20260911b/data.js";
-import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, ICON_FONT_LO } from "../js/v20260911b/icons.js";
-import { ICON_BY_CODE, ICON_LOCAL_CODES } from "../js/v20260911b/icons_data.js";
-import { simpleHash, createPrefetchManager } from "../js/v20260911b/prefetch.js";
-import { computeRequirements, requirementsList } from "../js/v20260911b/requirements.js";
-import { BLOCK_REQUIREMENTS } from "../js/v20260911b/requirements_data.js";
-import { openZip } from "../js/v20260911b/zip.js";
-import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers, looseJson, parseRequirements, parseHexColor } from "../js/v20260911b/mod.js";
-import { CN_BLOCKS } from "../js/v20260911b/cn_data.js";
+} from "../js/render.js";
+import { blockDisplayName, modNameCandidates, spriteDisplayName } from "../js/names.js";
+import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN, CONTENT_COLORS, CONFIG_UNDERLAY, CONFIG_OVERLAY, configSpriteNames } from "../js/data.js";
+import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, ICON_FONT_LO } from "../js/icons.js";
+import { ICON_BY_CODE, ICON_LOCAL_CODES } from "../js/icons_data.js";
+import { simpleHash, createPrefetchManager } from "../js/prefetch.js";
+import { computeRequirements, requirementsList } from "../js/requirements.js";
+import { BLOCK_REQUIREMENTS } from "../js/requirements_data.js";
+import { openZip } from "../js/zip.js";
+import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers, looseJson, parseRequirements, parseHexColor } from "../js/mod.js";
+import { CN_BLOCKS } from "../js/cn_data.js";
 import {
   HISTORY_KEY,
   HISTORY_MAX_ITEMS,
@@ -56,7 +56,7 @@ import {
   saveHistory,
   loadHistory,
   formatRelativeTime,
-} from "../js/v20260911b/history.js";
+} from "../js/history.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1547,8 +1547,8 @@ async function testNet() {
   });
 
   try {
-    const { fetchMindustry, resetProbe, SOURCES, DEFAULT_SOURCES, SOURCE_DEFS, getSourceOrder, setChoiceKey, probeAllSources } = await import("../js/v20260911b/sources.js");
-    const { fetchMindustryCached, spriteCacheKey, resetCacheInfo } = await import("../js/v20260911b/cache.js");
+    const { fetchMindustry, resetProbe, SOURCES, DEFAULT_SOURCES, SOURCE_DEFS, getSourceOrder, setChoiceKey, probeAllSources } = await import("../js/sources.js");
+    const { fetchMindustryCached, spriteCacheKey, resetCacheInfo } = await import("../js/cache.js");
     const A = SOURCES[0];
     const B = SOURCES[1];
     const C = SOURCES[2];
