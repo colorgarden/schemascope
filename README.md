@@ -1,8 +1,9 @@
 # Mindustry 蓝图解析 · 渲染工具（纯前端静态版）
 
-把 `msch.py` 的功能完整移植到**纯前端静态网页**：输入蓝图（Base64 或 `.msch` 文件）→
-浏览器内解析 → canvas 渲染（多层贴图、描边、电力激光、桥连接、原版背景全部保留）→
-点击处理器弹代码、悬停提示、图例、导出 PNG。
+纯前端静态网页实现：输入蓝图（Base64 或 `.msch` 文件）→ 浏览器内解析 →
+canvas 渲染（多层贴图、描边、电力激光、桥连接、原版背景全部保留）→
+点击处理器弹代码、悬停提示、图例、导出 PNG。与同项目的 Python 参考实现
+（`msch.py`，不包含在本仓库）功能保持一致。
 
 - 无需构建步骤、无需后端，vanilla JS + ES modules。
 - 可直接挂到 **GitHub Pages**，也可用 `python3 -m http.server` 本地打开。
@@ -13,54 +14,49 @@
 ## 目录结构
 
 ```
-web/
-  index.html            页面入口
-  css/style.css         深色中文界面样式（含 MindustryIcons @font-face）
-  js/data.js            常量与中文映射（TILE/LAYERS/BLOCK_CN/CONTENT_CN/…）
-  js/cn_data.js         全量官方中文名（由 bundle_zh_CN.properties 生成）
-  js/inflate.js         zlib 解压封装（DecompressionStream）
-  js/parser.js          容器解析 + TypeIO + contentMap + 处理器逻辑提取
-  js/render.js          渲染器（与 msch.py 像素级一致）
-  js/icons.js           PUA 内容图标解析 + richText 富文本
-  js/icons_data.js      PUA 码点表（由 icons.properties 生成）
-  js/prefetch.js        输入哈希 + 预加载管理器（可单测）
-  js/cache.js           Cache Storage 持久化缓存（v2 + 规范化键 + SWR/TTL）
-  js/sources.js         Mindustry 镜像源（手动选择 + 超时 + 自动切换）
-  js/zip.js             纯 JS zip 读取器（STORED/DEFLATE，可单测）
-  js/mod.js             模组 zip 解析（方块/贴图/bundle，可单测）
-  js/names.js           方块显示名（bundle > JSON name > BLOCK_CN，可单测）
-  js/history.js         本地历史记录（容量策略纯函数，可单测）
-  js/requirements.js    蓝图总耗材计算（可单测）
-  js/requirements_data.js 方块耗材表 BLOCK_REQUIREMENTS + 物品中文名 ITEM_CN
-  js/main.js            入口 UI 逻辑（入口带 ?v=<VER> 查询做缓存穿透）
-  assets/fonts/icon.ttf UI emoji 字体（MindustryIcons）
-  assets/icons/*.png    从官方 assets.jar 导出的 530 个原版 PUA 图标
-  sprite_index.json     贴图名 → 相对路径索引（blocks/items/aux/all）
-  test/parse_test.mjs   Node 一致性测试 + 渲染器/PUA 单测
-  package.json          {"type":"module"}
+index.html            页面入口
+css/style.css         深色中文界面样式（含 MindustryIcons @font-face）
+js/data.js            常量与中文映射（TILE/LAYERS/BLOCK_CN/CONTENT_CN/…）
+js/cn_data.js         全量官方中文名（由 bundle_zh_CN.properties 生成）
+js/inflate.js         zlib 解压封装（DecompressionStream）
+js/parser.js          容器解析 + TypeIO + contentMap + 处理器逻辑提取
+js/render.js          渲染器（与同项目 Python 版 msch.py 像素级一致）
+js/icons.js           PUA 内容图标解析 + richText 富文本
+js/icons_data.js      PUA 码点表（由 icons.properties 生成）
+js/prefetch.js        输入哈希 + 预加载管理器（可单测）
+js/cache.js           Cache Storage 持久化缓存（v2 + 规范化键 + SWR/TTL）
+js/sources.js         Mindustry 镜像源（手动选择 + 超时 + 自动切换）
+js/zip.js             纯 JS zip 读取器（STORED/DEFLATE，可单测）
+js/mod.js             模组 zip 解析（方块/贴图/item/bundle，可单测）
+js/names.js           方块显示名（bundle > JSON name > BLOCK_CN，可单测）
+js/history.js         本地历史记录（容量策略纯函数，可单测）
+js/requirements.js    蓝图总耗材计算（可单测）
+js/requirements_data.js 方块耗材表 BLOCK_REQUIREMENTS + 物品中文名 ITEM_CN
+js/main.js            入口 UI 逻辑（入口带 ?v=<VER> 查询做缓存穿透）
+assets/fonts/icon.ttf UI emoji 字体（MindustryIcons）
+assets/icons/*.png    从官方 assets.jar 导出的 530 个原版 PUA 图标
+sprite_index.json     贴图名 → 相对路径索引（blocks/items/aux/all）
+test/parse_test.mjs   Node 一致性测试 + 渲染器/PUA 单测
+package.json          {"type":"module"}
 ```
 
-## 一、部署到 GitHub Pages（完整步骤）
+## 一、部署到 GitHub Pages
 
-1. **新建仓库**：在 GitHub 上新建一个仓库（例如 `msch-viz`），可设为 Public。
-2. **上传 `web/` 里的内容**：把 `web/` 目录**里面的全部文件**上传到仓库根目录，
-   使仓库根目录下直接有 `index.html`、`css/`、`js/`、`sprite_index.json` 等。
-   - 网页上传：仓库页面 → **Add file → Upload files**，把 `index.html`、`css`、`js`、
-     `sprite_index.json`、`README.md`、`package.json` 一起拖进去，Commit。
-   - 或用命令行（把 `你的用户名/仓库名` 换成实际值）：
-     ```bash
-     cd web
-     git init
-     git add .
-     git commit -m "Mindustry blueprint viewer"
-     git branch -M main
-     git remote add origin https://github.com/你的用户名/仓库名.git
-     git push -u origin main
-     ```
-3. **开启 Pages**：仓库 **Settings → Pages**。
+本仓库根目录**就是**站点内容（`index.html`、`css/`、`js/`、`sprite_index.json` 等），
+无需任何构建步骤，直接按下面的步骤挂到 GitHub Pages 即可。
+
+1. **Fork 或克隆本仓库**：在 GitHub 上 Fork `colorgarden/schemascope`；
+   或克隆到本地后推送到自己的仓库（换成自己的地址）：
+   ```bash
+   git clone https://github.com/colorgarden/schemascope.git
+   cd schemascope
+   git remote set-url origin https://github.com/你的用户名/你的仓库.git
+   git push -u origin main
+   ```
+2. **开启 Pages**：仓库 **Settings → Pages**。
    - **Source** 选 **Deploy from a branch**；
    - **Branch** 选 `main`，目录选 **`/ (root)`**，Save。
-4. 等待约 1 分钟，访问 `https://你的用户名.github.io/仓库名/` 即可。
+3. 等待约 1 分钟，访问 `https://你的用户名.github.io/你的仓库/` 即可。
 
 > 提示：如果入口页面无法访问，确认仓库根目录存在 `index.html`（本工具不需要任何构建/工作流）。
 >
@@ -79,7 +75,7 @@ web/
 要完全离线（首次加载更快、无网络也能用），把贴图缓存目录一并上传：
 
 1. 在仓库根目录新建 `assets/sprites/`。
-2. 把 `msch.py` 运行后生成的 `sprites/*.png`（或从 Mindustry 仓库下载的贴图，
+2. 把同项目 Python 版（`msch.py`）运行后生成的 `sprites/*.png`（或从 Mindustry 仓库下载的贴图，
    **文件名必须是方块/贴图名 + `.png`**，例如 `mass-driver.png`、`laser.png`、
    `schematic-background.png`）全部放入 `assets/sprites/`。
 3. 重新 push。页面会自动优先使用本地贴图。
@@ -328,7 +324,6 @@ UI emoji → 去掉。
 ## 八、本地预览
 
 ```bash
-cd web
 python3 -m http.server 8000
 # 浏览器打开 http://localhost:8000/
 ```
@@ -339,13 +334,12 @@ python3 -m http.server 8000
 ## 九、运行测试
 
 ```bash
-cd web
-node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/history.js js/main.20260910i.js
+node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/history.js js/main.js
 node test/parse_test.mjs
 ```
 
-`test/parse_test.mjs` 会读取 `/storage/emulated/0/蓝图.txt` 与 `蓝图.json`
-（可在文件顶部修改路径），逐字段比对解析结果，并运行渲染器关键算法单测
+`test/parse_test.mjs` 会读取本地测试样本（路径在文件顶部，可自行修改），
+逐字段比对解析结果，并运行渲染器关键算法单测
 （footprint/中心坐标、多层叠加、描边膨胀、flat-top 光束采样、桥配对）
 与 PUA 图标单测（`resolveIcon` 锚点、`richText`/`plainTextWithIcons`）。
 需要 Node 18+（内置 `DecompressionStream`）。
