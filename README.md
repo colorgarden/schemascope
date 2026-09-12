@@ -24,6 +24,9 @@ js/cn_data.js         全量官方中文名（由 bundle_zh_CN.properties 生成
 js/inflate.js         zlib 解压封装（DecompressionStream）
 js/parser.js          容器解析 + TypeIO + contentMap + 处理器逻辑提取
 js/render.js          渲染器（与同项目 Python 版 msch.py 像素级一致）
+js/blending.js        邻居拼接 Autotiler（传送带/管道/导管，纯函数可单测）
+js/vanilla_blocks.js  官方方块类型/属性表（由 tools/gen_vanilla_blocks.py 生成）
+js/vanilla_turrets.js 官方炮塔 DrawTurret/RegionPart 部件表（同上生成）
 js/icons.js           PUA 内容图标解析 + richText 富文本
 js/icons_data.js      PUA 码点表（由 icons.properties 生成）
 js/prefetch.js        输入哈希 + 预加载管理器（可单测）
@@ -38,7 +41,8 @@ js/requirements_data.js 方块耗材表 BLOCK_REQUIREMENTS + 物品中文名 ITE
 js/main.js            入口 UI 逻辑（入口带 ?v=<VER> 查询做缓存穿透）
 sprite_index.json     贴图名 → 相对路径索引（blocks/items/aux/all）
 test/parse_test.mjs   Node 一致性测试 + 渲染器/PUA 单测
-tools/gen_vanilla_blocks.py 从官方 Blocks.java 生成 js/vanilla_blocks.js（开发侧）
+tools/gen_vanilla_blocks.py 从官方 Blocks.java 生成 vanilla_blocks.js + vanilla_turrets.js（开发侧）
+tools/vanilla_type_flags.py 官方类级默认属性（gen 脚本 --src-root 可重烘焙，开发侧）
 package.json          {"type":"module"}
 ```
 
@@ -214,7 +218,15 @@ UI emoji → 去掉。
   火焰/发光/工作态（DrawFlame/DrawGlowRegion/DrawCultivator/DrawWarmupRegion/DrawFade/…）一律跳过。
   无 drawer 时按该 `type` 原版默认：`Drill`/`SolidPump` → `[base,-rotator,-top]`、
   `UnitFactory` → `[base,-top]`、其它 → `[base]`。**不再使用 `-top` 自动启发式**。
-  `DrawTurret` 的炮塔部件（炮管/底座分层与旋转）暂未渲染，仅画本体。
+- **传送带/管道/导管邻居拼接（Autotiler）**：`js/blending.js` 逐条移植官方
+  `Autotiler.buildBlending/transformCase/blends` 与 Conveyor/Duct/Conduit（含装甲变体）的
+  `blends` 重写；邻居仅在蓝图内查找。每个 tile 算出 `blendbits`（0..4）后取
+  `<名>-<blendbits>-0`（传送带）或 `<名>-top-<blendbits>`（导管/管道，底图 `*-bottom-<bits>`），
+  再按 `xscl/yscl`（−1 = 翻转）与 `rot×90` 绘制。`sliced()` 的 bit4 边缘装饰块暂未画（TODO）。
+- **炮塔部件（DrawTurret / RegionPart）**：`js/vanilla_turrets.js` 记录 basePrefix 与每个
+  RegionPart 的静态几何；渲染 = base（不旋转）→ 本体 `<名>`（`rotation−90`）→ `-top` →
+  部件（`under=true` 在本体前，mirror 用 `<名>-r`/`<名>-l` 镜像）。heat/glow/ShapePart/HaloPart/
+  setAmmoParts 与 recoil/warmup 进度动画忽略（静止态）。
 - **原版顶盖**：`LAYERS` 中 kiln/silicon-smelter/…/overdrive-dome 等 15 项 `[base, base-top]`
   为常驻顶层 region，照旧绘制；只有钻石类 `-rotator`、工作态火焰/发光层按上方规则区分。
 - **耗材集成**：总耗材表 = vanilla `BLOCK_REQUIREMENTS` + 所有模组方块（内部名与 base 都注册）；
@@ -339,13 +351,14 @@ python3 -m http.server 8000
 ## 九、运行测试
 
 ```bash
-node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/history.js js/main.js
+node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/blending.js js/render_rules.js js/vanilla_blocks.js js/vanilla_turrets.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/history.js js/main.js
 node test/parse_test.mjs
 ```
 
 `test/parse_test.mjs` 会读取本地测试样本（路径在文件顶部，可自行修改），
 逐字段比对解析结果，并运行渲染器关键算法单测
-（footprint/中心坐标、多层叠加、描边膨胀、flat-top 光束采样、桥配对）
+（footprint/中心坐标、多层叠加、描边膨胀、flat-top 光束采样、桥配对、
+邻居拼接 buildBlending 的直/弯/T/十字与旋转不变性、炮塔 base/本体/部件合成）
 与 PUA 图标单测（`resolveIcon` 锚点、`richText`/`plainTextWithIcons`）。
 需要 Node 18+（内置 `DecompressionStream`）。
 

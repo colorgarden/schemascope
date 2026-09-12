@@ -25,7 +25,8 @@
 // 从而保持既有校验效果。
 // =============================================================================
 
-import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260913e";
+import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260913f";
+import { VANILLA_TURRETS } from "./vanilla_turrets.js?v=20260913f";
 
 // -----------------------------------------------------------------------------
 // 基础解析：方块名 + 可选模组 def → type / size / range
@@ -367,4 +368,144 @@ export function configSpriteNamesFor(blockName, def) {
 export function hasTypeRule(blockName, def) {
   const key = typeOfBlock(blockName, def).toLowerCase();
   return Object.prototype.hasOwnProperty.call(TYPE_RULES, key);
+}
+
+// -----------------------------------------------------------------------------
+// 拼接（Autotiler）/ 炮塔（DrawTurret）类型判定与属性查询
+//
+// 这些函数是 js/blending.js 与 js/render.js 共用的事实来源：
+//   - AUTOTILER_TYPES：官方 implements Autotiler 的类（Conveyor/Duct/Conduit/StackConveyor）
+//   - TURRET_TYPES   ：官方 drawer = DrawTurret 的类（Turret 及其子类，不含 BaseTurret）
+//   - VANILLA_TURRETS：tools/gen_vanilla_blocks.py 生成的炮塔部件静态几何
+// -----------------------------------------------------------------------------
+
+export const AUTOTILER_TYPES = new Set([
+  "Conveyor", "ArmoredConveyor", "Duct", "Conduit", "ArmoredConduit",
+  // 注：StackConveyor 也 implements Autotiler，但官方 drawPlanRegion 用 regions[0] +
+  // edgeRegion 的「各方向缺边」机制，而非 regions[blendbits] 变体，故不纳入本渲染路径。
+  // （blending.js 仍保留其 blends 分支以备后续；此处按 TODO 处理。）
+]);
+
+export const TURRET_TYPES = new Set([
+  "Turret", "ItemTurret", "LiquidTurret", "PowerTurret", "LaserTurret",
+  "ContinuousTurret", "ContinuousLiquidTurret",
+]);
+
+const GENERIC_CRAFTER_TYPES = new Set(["GenericCrafter", "AttributeCrafter", "HeatCrafter"]);
+
+/** 该方块是否走邻居拼接（含模组同名类型）。 */
+export function isAutotilerBlock(blockName, def) {
+  return AUTOTILER_TYPES.has(typeOfBlock(blockName, def));
+}
+
+/** 该方块是否为 DrawTurret 炮塔（含模组同名类型）。 */
+export function isTurretBlock(blockName, def) {
+  return TURRET_TYPES.has(typeOfBlock(blockName, def));
+}
+
+// 从 VANILLA_BLOCKS 归纳「类名 -> 代表属性」，供模组方块（无内置 flags）按类型回退。
+let _typeFlagDefaults = null;
+function typeFlagDefaults(type) {
+  if (_typeFlagDefaults === null) {
+    _typeFlagDefaults = new Map();
+    for (const n of Object.keys(VANILLA_BLOCKS)) {
+      const v = VANILLA_BLOCKS[n];
+      if (!v || !v.type) continue;
+      if (!_typeFlagDefaults.has(v.type)) _typeFlagDefaults.set(v.type, v.flags || {});
+    }
+  }
+  return _typeFlagDefaults.get(type) || {};
+}
+
+/**
+ * 方块拼接属性查询（blending.js 的世界 props）。
+ * 顺序：类名代表属性 → 方块显式 flags → 模组 def.flags（后者覆盖）。
+ */
+export function blockProps(blockName, def) {
+  const type = typeOfBlock(blockName, def);
+  const v = VANILLA_BLOCKS[blockName];
+  const explicit = (v && v.flags) || {};
+  const modFlags = (def && def.flags) || {};
+  const f = Object.assign({}, typeFlagDefaults(type), explicit, modFlags);
+  const hasItems = !!f.hasItems;
+  return {
+    type,
+    size: sizeOfBlock(blockName, def),
+    hasItems,
+    hasLiquids: !!f.hasLiquids,
+    outputsLiquid: !!f.outputsLiquid,
+    outputsItems: f.outputsItems !== undefined ? !!f.outputsItems : hasItems,
+    squareSprite: f.squareSprite !== false,
+    rotate: !!f.rotate,
+    isDuct: !!f.isDuct,
+    armored: !!f.armored,
+    // 近似标记：GenericCrafter 家族的 rotatedOutput 依赖输出方向，静态渲染按 false 处理
+    isGenericCrafterLike: GENERIC_CRAFTER_TYPES.has(type),
+  };
+}
+
+// -----------------------------------------------------------------------------
+// 炮塔贴图/部件查询
+// -----------------------------------------------------------------------------
+
+/** 炮塔 DrawTurret 信息：basePrefix 与 RegionPart 静态几何（vanilla 内置表 / 模组 def）。 */
+export function turretInfo(blockName, def) {
+  const n = baseOf(blockName, def);
+  const v = VANILLA_TURRETS[blockName];
+  const m = def && def.turret;
+  const basePrefix = (v && v.basePrefix) || (m && m.basePrefix) || (def && def.basePrefix) || "";
+  let parts = (v && v.parts) || (m && m.parts) || (def && def.parts) || [];
+  // 部件名为方块名（base）拼接；若内置表 key 与 base 不同则仍以 base 为准。
+  parts = parts.map((p) => ({
+    suffix: p.suffix === undefined ? null : p.suffix,
+    name: p.name || (p.suffix === null ? null : n + p.suffix),
+    x: Number(p.x) || 0,
+    y: Number(p.y) || 0,
+    mirror: !!p.mirror,
+    under: !!p.under,
+  }));
+  return { basePrefix, parts };
+}
+
+/** 炮塔本体：<base>-base（无则 <basePrefix>block-<size>）。 */
+export function turretBaseName(blockName, def) {
+  const n = baseOf(blockName, def);
+  return n + "-base";
+}
+export function turretFallbackBaseName(blockName, def) {
+  const info = turretInfo(blockName, def);
+  return (info.basePrefix || "") + "block-" + sizeOfBlock(blockName, def);
+}
+
+/** 预加载所需贴图名（base/body/top/部件；base 的名称由调用方按存在性选择）。 */
+export function turretSpriteNames(blockName, def) {
+  const n = baseOf(blockName, def);
+  const info = turretInfo(blockName, def);
+  const size = sizeOfBlock(blockName, def);
+  const out = [n + "-base", (info.basePrefix || "") + "block-" + size, n, n + "-top"];
+  for (const p of info.parts) {
+    const real = p.name || (n + (p.suffix || ""));
+    if (p.mirror) out.push(real + "-r", real + "-l");
+    else out.push(real);
+  }
+  return out;
+}
+
+/** 拼接系列预加载贴图名（0..4 号连接变体）。 */
+export function autotilerSpriteNames(blockName, def) {
+  const n = baseOf(blockName, def);
+  const key = typeOfBlock(blockName, def).toLowerCase();
+  const out = [];
+  if (key === "conveyor" || key === "armoredconveyor" || key === "stackconveyor") {
+    for (let b = 0; b < 5; b++) out.push(n + "-" + b + "-0");
+  } else if (key === "conduit" || key === "armoredconduit") {
+    for (let b = 0; b < 5; b++) {
+      out.push(n + "-top-" + b, n + "-bottom-" + b, "conduit-bottom-" + b);
+    }
+  } else if (key === "duct") {
+    for (let b = 0; b < 5; b++) {
+      out.push(n + "-top-" + b, n + "-bottom-" + b, "duct-bottom-" + b);
+    }
+  }
+  return out;
 }

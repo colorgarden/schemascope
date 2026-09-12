@@ -21,7 +21,7 @@ import {
   BRIDGE_RANGE,
   BRIDGE_WIDTH,
   BRIDGE_OPACITY,
-} from "./data.js?v=20260913e";
+} from "./data.js?v=20260913f";
 import {
   vanillaRule,
   rangeOfBlock,
@@ -29,7 +29,16 @@ import {
   isMassDriverType as ruleIsMassDriverType,
   isBridgeBlock as ruleIsBridgeBlock,
   configKindOf,
-} from "./render_rules.js?v=20260913e";
+  blockProps,
+  isAutotilerBlock,
+  isTurretBlock,
+  turretInfo,
+  turretFallbackBaseName,
+  typeOfBlock,
+  sizeOfBlock,
+  baseOf,
+} from "./render_rules.js?v=20260913f";
+import { makeTileWorld, buildBlending } from "./blending.js?v=20260913f";
 
 // 模组方块的多层启发式（仅当 vanilla LAYERS 未定义该块时使用）
 let MOD_LAYERS = {};
@@ -498,10 +507,15 @@ export function computeLayout(schem, sprites) {
   const raw = [];
   for (let ti = 0; ti < schem.tiles.length; ti++) {
     const t = schem.tiles[ti];
-    const sp = sprites[t.block] || makePlaceholder(1);
-    const size = sp.size;
+    const sp = sprites[t.block] || null;
+    // 贴图缺失/占位时按声明占地（vanilla_blocks / 模组 def）确定尺寸，
+    // 避免无本体图的炮塔（smite/scathe/...）被当成 1×1 而错位。
+    const declSize = sizeOfBlock(t.block, MOD_DEFS.get(t.block)) || 1;
+    let size = sp && Number(sp.size) > 0 ? Number(sp.size) : declSize;
+    if (sp && sp.placeholder && declSize > size) size = declSize;
+    if (!sp) size = declSize;
     const [lx, by] = tileFootprint(t.x, t.y, size);
-    raw.push({ ti, tile: t, size, lx, by, sprite: sp });
+    raw.push({ ti, tile: t, size, lx, by, sprite: sp || makePlaceholder(size) });
   }
 
   let minLx;
@@ -657,10 +671,185 @@ export function padAndScale(buf, cw, ch, scale, pad, transparent, bgtex) {
 // 6. 中心配置图标 / 电力激光 / 桥
 // -----------------------------------------------------------------------------
 
+/** 水平翻转 RGBA 缓冲。 */
+function flipH(rgba, w, h) {
+  const out = new Uint8ClampedArray(rgba.length);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const so = (y * w + x) * 4;
+      const dofs = (y * w + (w - 1 - x)) * 4;
+      out[dofs] = rgba[so];
+      out[dofs + 1] = rgba[so + 1];
+      out[dofs + 2] = rgba[so + 2];
+      out[dofs + 3] = rgba[so + 3];
+    }
+  }
+  return [w, h, out];
+}
+
+/** 垂直翻转 RGBA 缓冲。 */
+function flipV(rgba, w, h) {
+  const out = new Uint8ClampedArray(rgba.length);
+  for (let y = 0; y < h; y++) {
+    const dy = h - 1 - y;
+    for (let x = 0; x < w; x++) {
+      const so = (y * w + x) * 4;
+      const dofs = (dy * w + x) * 4;
+      out[dofs] = rgba[so];
+      out[dofs + 1] = rgba[so + 1];
+      out[dofs + 2] = rgba[so + 2];
+      out[dofs + 3] = rgba[so + 3];
+    }
+  }
+  return [w, h, out];
+}
+
+/** 屏幕坐标向量逆时针旋转 q×90°（与 rotateSprite 的像素旋转方向一致）。 */
+function rotVecScreen(x, y, q) {
+  for (let i = 0; i < (q & 3); i++) {
+    const nx = y;
+    const ny = -x;
+    x = nx;
+    y = ny;
+  }
+  return [x, y];
+}
+
+/**
+ * 绘制一个 region 到 (cx,cy) 中心。
+ * @param tint 可选 [r,g,b]，对 RGB 做乘算
+ * @param flipX/flipY 先在贴图局部翻转，再按 rot(0..3) 旋转（对齐 Draw.rect 的负宽高 + 旋转）
+ */
+function drawRegionCentered(buf, cw, ch, sp, cx, cy, rot, flipX, flipY, tint, alphaScale = 1) {
+  let w = sp.w;
+  let h = sp.h;
+  let rgba = sp.rgba;
+  if (flipX) [w, h, rgba] = flipH(rgba, w, h);
+  if (flipY) [w, h, rgba] = flipV(rgba, w, h);
+  if (rot) [w, h, rgba] = rotateSprite(rgba, w, h, rot);
+  if (tint) rgba = tintRgba(rgba, tint);
+  if (alphaScale !== 1 && !tint) {
+    // 需要 alpha 缩放时走 blitRotated 的按角路径（此处 rot 为 90° 整数，简化为逐像素）
+    const tmp = new Uint8ClampedArray(rgba.length);
+    for (let i = 0; i < rgba.length; i += 4) {
+      tmp[i] = rgba[i];
+      tmp[i + 1] = rgba[i + 1];
+      tmp[i + 2] = rgba[i + 2];
+      tmp[i + 3] = Math.trunc(rgba[i + 3] * alphaScale);
+    }
+    rgba = tmp;
+  }
+  blend(buf, cw, ch, cx - Math.floor(w / 2), cy - Math.floor(h / 2), rgba, w, h);
+}
+
+const CONDUIT_BOT_COLOR = [0x56, 0x56, 0x56];
+
+/**
+ * 拼接系列绘制（对照官方 drawPlanRegion / draw）：
+ *   Conveyor.java: draw regions[blendbits][0] with tilesize*blendsclx/blendscly at rotation*90
+ *   Duct.java:     botRegions[blendbits]（fallback duct-bottom-#）→ topRegions[blendbits]
+ *   Conduit.java:  botRegions[blendbits]（tint botColor=565656）→ topRegions[blendbits]
+ * 额外混合切片（Autotiler bits[4] 装饰）暂不绘制（TODO）。
+ */
+function drawAutotilerLayers(buf, cw, ch, t, e, sprites, world, cx, cy) {
+  const def = MOD_DEFS.get(t.block);
+  const type = typeOfBlock(t.block, def);
+  const key = type.toLowerCase();
+  let bits = { blendbits: 0, xscl: 1, yscl: 1, blendmask: 0, nonsquaremask: 0 };
+  if (world) {
+    bits = buildBlending(world, { x: t.x, y: t.y, block: t.block, rot: t.rot }, t.rot);
+  }
+  const b = bits.blendbits;
+  const rot = t.rot;
+  const flipX = bits.xscl < 0;
+  const flipY = bits.yscl < 0;
+  const n = baseOf(t.block, def);
+
+  const pick = (...names) => {
+    for (const nm of names) {
+      const sp = getSprite(sprites, nm, true);
+      if (sp) return sp;
+    }
+    return null;
+  };
+
+  if (key === "conveyor" || key === "armoredconveyor" || key === "stackconveyor") {
+    const sp = pick(n + "-" + b + "-0", n + "-0-0", n);
+    if (sp) drawRegionCentered(buf, cw, ch, sp, cx, cy, rot, flipX, flipY, null, 1);
+    return;
+  }
+  if (key === "conduit" || key === "armoredconduit") {
+    const bot = pick(n + "-bottom-" + b, "conduit-bottom-" + b, "conduit-bottom");
+    if (bot) drawRegionCentered(buf, cw, ch, bot, cx, cy, rot, flipX, flipY, CONDUIT_BOT_COLOR, 1);
+    const top = pick(n + "-top-" + b, n + "-top-0", n);
+    if (top) drawRegionCentered(buf, cw, ch, top, cx, cy, rot, flipX, flipY, null, 1);
+    return;
+  }
+  if (key === "duct") {
+    const bot = pick(n + "-bottom-" + b, "duct-bottom-" + b, "duct-bottom");
+    if (bot) drawRegionCentered(buf, cw, ch, bot, cx, cy, rot, flipX, flipY, null, 1);
+    const top = pick(n + "-top-" + b, n + "-top-0", n);
+    if (top) drawRegionCentered(buf, cw, ch, top, cx, cy, rot, flipX, flipY, null, 1);
+    return;
+  }
+}
+
+/**
+ * 炮塔绘制（DrawTurret.draw / drawTurret + RegionPart 静态几何）：
+ *   base（不旋转）→ 本体 block.region（rotation-90）→ top → under 部件在本体前、其余在后。
+ *   y 轴：Mindustry 世界 y 向上，屏幕 y 向下取反；x/y ×4 = 像素。
+ */
+function drawTurretLayers(buf, cw, ch, t, e, sprites, cx, cy) {
+  const def = MOD_DEFS.get(t.block);
+  const info = turretInfo(t.block, def);
+  const nb = baseOf(t.block, def);
+  const q = (t.rot + 3) & 3; // Draw.rect(..., drawrot())，drawrot = rotation - 90
+
+  const baseSp = getSprite(sprites, nb + "-base", true) ||
+    getSprite(sprites, turretFallbackBaseName(t.block, def), true);
+  if (baseSp) {
+    blend(buf, cw, ch, cx - Math.floor(baseSp.w / 2), cy - Math.floor(baseSp.h / 2), baseSp.rgba, baseSp.w, baseSp.h);
+  }
+
+  const drawPart = (p) => {
+    const real = p.name || (nb + (p.suffix || ""));
+    const draws = p.mirror ? [[real + "-r", 1], [real + "-l", -1]] : [[real, 1]];
+    for (const [nm, sign] of draws) {
+      const sp = getSprite(sprites, nm, true);
+      if (!sp) continue;
+      let [ox, oy] = rotVecScreen(p.x * sign * 4, -p.y * 4, q);
+      drawRegionCentered(buf, cw, ch, sp, cx + ox, cy + oy, q, sign < 0, false, null, 1);
+    }
+  };
+
+  for (const p of info.parts) if (p.under) drawPart(p);
+
+  // 本体：官方 DrawTurret.draw() 使用 block.region（<名>），无本体图时仅靠 base + 部件
+  const body = getSprite(sprites, nb, true);
+  if (body) drawRegionCentered(buf, cw, ch, body, cx, cy, q, false, false, null, 1);
+  const top = getSprite(sprites, nb + "-top", true);
+  if (top) drawRegionCentered(buf, cw, ch, top, cx, cy, q, false, false, null, 1);
+
+  for (const p of info.parts) if (!p.under) drawPart(p);
+}
+
+
 /** 绘制方块 sprite 层（多层/描边/旋转），供 underlay/overlay 复用。 */
-function drawBlockSpriteLayers(buf, cw, ch, t, e, sprites, layers) {
+function drawBlockSpriteLayers(buf, cw, ch, t, e, sprites, layers, world) {
   const cx = e.px + Math.floor((e.size * TILE) / 2);
   const cy = e.py + Math.floor((e.size * TILE) / 2);
+
+  // 拼接系列（Conveyor/Duct/Conduit）：按邻居计算连接变体，单独绘制
+  if (layers && isAutotilerBlock(t.block, MOD_DEFS.get(t.block))) {
+    drawAutotilerLayers(buf, cw, ch, t, e, sprites, world, cx, cy);
+    return;
+  }
+  // 炮塔（DrawTurret）：base + 本体 + top + RegionPart 部件
+  if (layers && isTurretBlock(t.block, MOD_DEFS.get(t.block))) {
+    drawTurretLayers(buf, cw, ch, t, e, sprites, cx, cy);
+    return;
+  }
+
   const names = layers ? staticLayerNames(t.block, t.rot) : [t.block];
   const ruleOutline = vanillaRule(t.block, MOD_DEFS.get(t.block)).outline;
   for (let li = 0; li < names.length; li++) {
@@ -709,7 +898,7 @@ function drawConfigUnderlay(buf, cw, ch, t, e, sprites) {
 /** 配置覆盖层（在 sprite 层之后）。
  *  centerTint：有内容 → `<block>-center` 乘内容色。
  *  liquidSource：source-bottom → (null?cross:fluid 着色铺满) → 重画该方块 sprite（最上层）。 */
-function drawConfigOverlay(buf, cw, ch, t, e, sprites, layers, kind) {
+function drawConfigOverlay(buf, cw, ch, t, e, sprites, layers, kind, world) {
   kind = kind || configKindOf(t.block, MOD_DEFS.get(t.block));
   const px = e.size * TILE;
   const cfg = t.config;
@@ -737,7 +926,7 @@ function drawConfigOverlay(buf, cw, ch, t, e, sprites, layers, kind) {
       }
     }
     // 液体源：sprite 重画到最上层
-    drawBlockSpriteLayers(buf, cw, ch, t, e, sprites, layers);
+    drawBlockSpriteLayers(buf, cw, ch, t, e, sprites, layers, world);
   }
 }
 
@@ -950,6 +1139,9 @@ export function renderSchematic(schem, sprites, opts = {}) {
 
   const buf = new Uint8ClampedArray(cw * ch * 4);
 
+  // 拼接用世界视图（邻居只在蓝图内查找）
+  const blendWorld = makeTileWorld(schem.tiles, (name) => blockProps(name, MOD_DEFS.get(name)));
+
   if (grid) drawGrid(buf, cw, ch);
 
   // ---- 第一遍：配置底层 → 方块图标（多层，按中心对齐） → 配置覆盖层 ----
@@ -959,9 +1151,9 @@ export function renderSchematic(schem, sprites, opts = {}) {
     if (configIcons && kind === "item") {
       drawConfigUnderlay(buf, cw, ch, t, e, sprites);
     }
-    drawBlockSpriteLayers(buf, cw, ch, t, e, sprites, layers);
+    drawBlockSpriteLayers(buf, cw, ch, t, e, sprites, layers, blendWorld);
     if (configIcons && (kind === "centerTint" || kind === "liquidSource")) {
-      drawConfigOverlay(buf, cw, ch, t, e, sprites, layers, kind);
+      drawConfigOverlay(buf, cw, ch, t, e, sprites, layers, kind, blendWorld);
     }
   }
 

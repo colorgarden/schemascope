@@ -10,22 +10,22 @@ import {
   AUX_PATHS,
   DEFAULT_SCALE,
   DEFAULT_PAD,
-} from "./data.js?v=20260913e";
-import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913e";
-import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913e";
-import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock } from "./render_rules.js?v=20260913e";
-import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260913e";
-import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913e";
-import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913e";
-import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913e";
-import { requirementsList } from "./requirements.js?v=20260913e";
-import { BLOCK_REQUIREMENTS } from "./requirements_data.js?v=20260913e";
-import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913e";
-import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913e";
-import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913e";
+} from "./data.js?v=20260913f";
+import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913f";
+import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913f";
+import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock, isAutotilerBlock, isTurretBlock, turretSpriteNames, autotilerSpriteNames } from "./render_rules.js?v=20260913f";
+import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260913f";
+import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913f";
+import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913f";
+import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913f";
+import { requirementsList } from "./requirements.js?v=20260913f";
+import { BLOCK_REQUIREMENTS } from "./requirements_data.js?v=20260913f";
+import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913f";
+import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913f";
+import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913f";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260913e";
+const APP_VERSION = "20260913f";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -601,11 +601,21 @@ function collectNeeded(schem) {
     else if (req) needed.set(n, true);
   };
   for (const t of schem.tiles) {
-    add(t.block, true);
-    // 图层：模组 drawer / 类型规则 / vanilla LAYERS 统一解析（含变体兜底）
-    for (const l of staticLayerNames(t.block, t.rot)) {
-      const lname = typeof l === "string" ? l : l && l.name;
-      if (lname) add(lname, lname === t.block);
+    const def = modDefs.get(t.block);
+    if (isTurretBlock(t.block, def)) {
+      // 炮塔：base + 本体 + top + RegionPart 部件（缺失即跳过，不产生占位框）
+      for (const n of turretSpriteNames(t.block, def)) add(n, false);
+    } else if (isAutotilerBlock(t.block, def)) {
+      // 拼接系列：0..4 号连接变体
+      add(t.block, true);
+      for (const n of autotilerSpriteNames(t.block, def)) add(n, false);
+    } else {
+      add(t.block, true);
+      // 图层：模组 drawer / 类型规则 / vanilla LAYERS 统一解析（含变体兜底）
+      for (const l of staticLayerNames(t.block, t.rot)) {
+        const lname = typeof l === "string" ? l : l && l.name;
+        if (lname) add(lname, lname === t.block);
+      }
     }
     if (isBridgeBlockName(t.block)) {
       add(t.block + "-bridge", false);

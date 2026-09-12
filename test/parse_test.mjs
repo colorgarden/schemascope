@@ -49,7 +49,16 @@ import {
   typeOfBlock,
   sizeOfBlock,
   hasTypeRule,
+  blockProps,
+  isAutotilerBlock,
+  isTurretBlock,
+  turretInfo,
+  turretFallbackBaseName,
+  turretSpriteNames,
+  autotilerSpriteNames,
 } from "../js/render_rules.js";
+import { VANILLA_TURRETS } from "../js/vanilla_turrets.js";
+import { makeTileWorld, buildBlending, transformCase, mod4, d4x, d4y, relativeTo, getFacingEdge, blends } from "../js/blending.js";
 import { VANILLA_BLOCKS } from "../js/vanilla_blocks.js";
 import { blockDisplayName, modNameCandidates, spriteDisplayName } from "../js/names.js";
 import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN, CONTENT_COLORS, CONFIG_UNDERLAY, CONFIG_OVERLAY, configSpriteNames, spriteAliasCandidates } from "../js/data.js";
@@ -1739,6 +1748,116 @@ function testRenderRules() {
 }
 
 // -----------------------------------------------------------------------------
+// 8.5 邻居拼接（Autotiler）+ 炮塔部件（DrawTurret / RegionPart）
+// -----------------------------------------------------------------------------
+function testBlending() {
+  console.log("== 邻居拼接（Autotiler）测试 ==");
+  const C = "titanium-conveyor";
+  const P = (x, y, rot = 0) => ({ block: C, x, y, rot });
+  const bits = (tiles, tx, ty) => {
+    const w = makeTileWorld(tiles, (n) => blockProps(n));
+    const t = tiles.find((v) => v.x === tx && v.y === ty);
+    return buildBlending(w, { x: t.x, y: t.y, block: t.block, rot: t.rot }, t.rot);
+  };
+  // 方向助手
+  check("mod4", mod4(-1) === 3 && mod4(5) === 1);
+  check("d4 方向 0=E 1=N 2=W 3=S", d4x(0) === 1 && d4y(1) === 1 && d4x(2) === -1 && d4y(3) === -1);
+  check("relativeTo 指向", relativeTo(0, 1, 0, 0) === 3 && relativeTo(1, 0, 0, 0) === 2 && relativeTo(0, 0, 0, 1) === 1);
+  check("getFacingEdge size1", JSON.stringify(getFacingEdge(1, 5, 5, { x: 6, y: 5 })) === JSON.stringify({ x: 5, y: 5 }));
+  check("getFacingEdge size3 钳制", JSON.stringify(getFacingEdge(3, 5, 5, { x: 5, y: 9 })) === JSON.stringify({ x: 5, y: 6 }));
+
+  // transformCase 对照官方
+  const tc = (n) => { const b = { blendbits: 0, xscl: 1, yscl: 1 }; transformCase(n, b); return [b.blendbits, b.yscl]; };
+  check("transformCase 0->3", deepEqual(tc(0), [3, 1]));
+  check("transformCase 1->4", deepEqual(tc(1), [4, 1]));
+  check("transformCase 2->2", deepEqual(tc(2), [2, 1]));
+  check("transformCase 3->2/-1", deepEqual(tc(3), [2, -1]));
+  check("transformCase 4->1/-1", deepEqual(tc(4), [1, -1]));
+  check("transformCase 5->1", deepEqual(tc(5), [1, 1]));
+  check("transformCase -1->0", deepEqual(tc(-1), [0, 1]));
+
+  // 合成场景（方向严格对齐：邻居朝向本方块或本方块朝邻居）
+  const S = [
+    ["直-横", [P(0, 0), P(1, 0), P(2, 0)], 1, 0],
+    ["直-纵", [P(0, 0, 1), P(0, 1, 1), P(0, 2, 1)], 0, 1],
+    ["弯 E->N", [P(0, 0), P(1, 0, 1), P(1, 1, 1)], 1, 0],
+    ["T E/W/N", [P(0, 0), P(1, 0), P(2, 0), P(1, 1, 3)], 1, 0],
+    ["十字", [P(0, 0), P(1, 0), P(2, 0), P(1, 1, 3), P(1, -1, 1)], 1, 0],
+    ["无邻居", [P(0, 0)], 0, 0],
+  ];
+  const expect = { "直-横": [0, 0b0101], "直-纵": [0, 0b0101], "弯 E->N": [1, 0b1001], "T E/W/N": [2, 0b1101], "十字": [3, 0b1111], "无邻居": [0, 0b0000] };
+  for (const [name, tiles, tx, ty] of S) {
+    const b = bits(tiles, tx, ty);
+    check(`拼接 ${name} blendbits`, b.blendbits === expect[name][0], `got ${b.blendbits} exp ${expect[name][0]}`);
+    check(`拼接 ${name} blendmask`, b.blendmask === expect[name][1], `got ${b.blendmask.toString(2)} exp ${expect[name][1].toString(2)}`);
+  }
+  check("拼接 T E/W/N yscl=-1", bits([P(0, 0), P(1, 0), P(2, 0), P(1, 1, 3)], 1, 0).yscl === -1);
+
+  // 旋转不变性：直段旋转 4 个角度形状一致
+  for (let rot = 0; rot < 4; rot++) {
+    // 沿 rot 方向排三格
+    const step = [d4x(rot), d4y(rot)];
+    const tiles = [
+      { block: C, x: 0 - step[0], y: 0 - step[1], rot },
+      { block: C, x: 0, y: 0, rot },
+      { block: C, x: 0 + step[0], y: 0 + step[1], rot },
+    ];
+    const b = bits(tiles, 0, 0);
+    check(`直段 rot=${rot} -> blendbits 0`, b.blendbits === 0, `got ${b.blendbits}`);
+  }
+
+  // 蓝图外邻居视为无连接
+  const alone = makeTileWorld([P(0, 0)], (n) => blockProps(n));
+  check("蓝图外无连接", blends(alone, { x: 0, y: 0, block: C, rot: 0 }, 0, 0) === false);
+
+  // 导管只连有液体的邻居；装甲传送带按 outputsItems 连接
+  const ductWorld = makeTileWorld([{ block: "plated-conduit", x: 0, y: 0, rot: 0 }, { block: "liquid-router", x: 1, y: 0, rot: 0 }], (n) => blockProps(n));
+  check("导管连接液体邻居", blends(ductWorld, { x: 0, y: 0, block: "plated-conduit", rot: 0 }, 0, 0) === true);
+  const ductNo = makeTileWorld([{ block: "plated-conduit", x: 0, y: 0, rot: 0 }, { block: "item-source", x: 1, y: 0, rot: 0 }], (n) => blockProps(n));
+  check("导管不连物品邻居", blends(ductNo, { x: 0, y: 0, block: "plated-conduit", rot: 0 }, 0, 0) === false);
+  const arm = makeTileWorld([{ block: "armored-duct", x: 0, y: 0, rot: 0 }, { block: "item-source", x: 1, y: 0, rot: 0 }], (n) => blockProps(n));
+  check("装甲管道连物品源", blends(arm, { x: 0, y: 0, block: "armored-duct", rot: 0 }, 0, 0) === true);
+  check("autotilerSpriteNames conveyor 5 变体", autotilerSpriteNames("titanium-conveyor").filter((n) => /-\d-0$/.test(n)).length === 5);
+}
+
+function testTurretParts() {
+  console.log("== 炮塔部件（DrawTurret/RegionPart）测试 ==");
+  check("VANILLA_TURRETS 收录 duo", !!VANILLA_TURRETS.duo);
+  check("duo 双炮管", deepEqual(VANILLA_TURRETS.duo.parts.map((p) => p.suffix), ["-barrel-l", "-barrel-r"]));
+  check("scatter -mid", VANILLA_TURRETS.scatter.parts.length === 1 && VANILLA_TURRETS.scatter.parts[0].suffix === "-mid");
+  check("breach 仅 basePrefix", VANILLA_TURRETS.breach.basePrefix === "reinforced-" && VANILLA_TURRETS.breach.parts.length === 0);
+  check("smite blade-bar y 序列", deepEqual(VANILLA_TURRETS.smite.parts.filter((p) => p.suffix === "-blade-bar").map((p) => p.y), [11, 1.5, -8]));
+  check("sublimate 部件 x/y", deepEqual(VANILLA_TURRETS.sublimate.parts.map((p) => [p.suffix, p.x, p.y]), [["-back", 5.5, -0.25], ["-front", 5, 4.25], ["-nozzle", 0, 0]]));
+
+  check("isTurretBlock ItemTurret", isTurretBlock("scatter"));
+  check("isTurretBlock 非 Turret 子类", !isTurretBlock("build-tower") && !isTurretBlock("repair-turret"));
+  check("isAutotilerBlock", isAutotilerBlock("titanium-conveyor") && isAutotilerBlock("armored-duct") && isAutotilerBlock("plated-conduit"));
+  check("isAutotilerBlock 桥不算", !isAutotilerBlock("bridge-conveyor"));
+
+  const info = turretInfo("disperse");
+  check("disperse basePrefix", info.basePrefix === "reinforced-");
+  check("disperse 部件含镜像", info.parts.some((p) => p.mirror));
+  check("turretFallbackBaseName breach", turretFallbackBaseName("breach") === "reinforced-block-3");
+  check("turretFallbackBaseName foreshadow", turretFallbackBaseName("foreshadow") === "block-4");
+  check("turretSpriteNames scatter 含 mid", turretSpriteNames("scatter").includes("scatter-mid"));
+  check("turretSpriteNames disperse 含 -r/-l", turretSpriteNames("disperse").includes("disperse-side-r") && turretSpriteNames("disperse").includes("disperse-side-l"));
+
+  // 炮塔渲染：合成贴图验证 base/本体/部件都被画出来（不崩溃且区域非空）
+  const B = spriteFromColor(TILE, TILE, 10, 20, 30, 255); // base 蓝灰（整格）
+  const body = spriteFromColor(TILE - 8, TILE - 8, 200, 0, 0, 255); // 本体红（略小，露出 base）
+  const part = spriteFromColor(8, 8, 0, 200, 0, 255); // 部件绿（中心小块）
+  const tiles = [{ block: "scatter", x: 0, y: 0, rot: 1, config_type: "null", config: null }];
+  const res = renderSchematic({ width: 4, height: 4, tiles }, { scatter: body, "scatter-mid": part, "block-2": B }, { scale: 1, pad: 0, transparent: true });
+  let hasRed = false, hasGreen = false, hasBlue = false;
+  for (let i = 0; i < res.rgba.length; i += 4) {
+    if (res.rgba[i] > 150 && res.rgba[i + 1] < 80) hasRed = true;
+    if (res.rgba[i + 1] > 150 && res.rgba[i] < 80) hasGreen = true;
+    if (res.rgba[i + 2] > 20 && res.rgba[i] < 40 && res.rgba[i + 1] < 40) hasBlue = true;
+  }
+  check("炮塔渲染含 base/本体/部件", hasRed && hasGreen && hasBlue, `red=${hasRed} green=${hasGreen} blue=${hasBlue}`);
+}
+
+// -----------------------------------------------------------------------------
 // 9. 镜像源切换 / 超时 / 缓存（注入 mock fetch 与 mock Cache Storage）
 // -----------------------------------------------------------------------------
 async function testNet() {
@@ -1986,6 +2105,8 @@ async function main() {
   testConfigRender();
   testDrawerLayers();
   testRenderRules();
+  testBlending();
+  testTurretParts();
   await testV0();
   await testNet();
 

@@ -12,7 +12,7 @@
 // 该模块主要在浏览器里生效；Node 单测通过注入 mock（caches/location/fetch）运行。
 // =============================================================================
 
-import { fetchMindustry, fetchTimeout, DEFAULT_TIMEOUT } from "./sources.js?v=20260913e";
+import { fetchMindustry, fetchTimeout, DEFAULT_TIMEOUT } from "./sources.js?v=20260913f";
 
 const CACHE_PREFIX = "msch-cache";
 const CACHE_NAME = "msch-cache-v2"; // 升级 v2
