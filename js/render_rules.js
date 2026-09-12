@@ -25,8 +25,8 @@
 // 从而保持既有校验效果。
 // =============================================================================
 
-import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260913g";
-import { VANILLA_TURRETS } from "./vanilla_turrets.js?v=20260913g";
+import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260913h";
+import { VANILLA_TURRETS } from "./vanilla_turrets.js?v=20260913h";
 
 /** 仅取自有属性，避免方块名（如 "constructor"）撞上 Object.prototype 上的同名属性。 */
 function own(obj, key) {
@@ -406,6 +406,22 @@ export function isAutotilerBlock(blockName, def) {
 /** 该方块是否为 DrawTurret 炮塔（含模组同名类型）。 */
 export function isTurretBlock(blockName, def) {
   return TURRET_TYPES.has(typeOfBlock(blockName, def));
+}
+
+// 单位工厂/载荷工厂（PayloadBlock 家族）：本体不旋转，开口/箭头 outRegion 随旋转绘制。
+// 官方来源：PayloadBlock.load()（findFactoryRegion：`<name>-out` → `factory-out-<size>`）；
+// UnitFactory.draw()：region 不转、outRegion 转 rotdeg()、topRegion 最后。
+export const FACTORY_TYPES = new Set(["UnitFactory", "PayloadCrafter", "PayloadFactory"]);
+
+/** 该方块是否为工厂类（UnitFactory/PayloadBlock 家族）。 */
+export function isFactoryBlock(blockName, def) {
+  return FACTORY_TYPES.has(typeOfBlock(blockName, def));
+}
+
+/** 工厂类需绘制的贴图名（按官方 findFactoryRegion 顺序：per-block → 共享 factory-*-size）。 */
+export function factorySpriteNames(blockName, size) {
+  const s = Number(size) > 0 ? Number(size) : 3;
+  return [blockName, blockName + "-out", "factory-out-" + s, blockName + "-top", "factory-top-" + s];
 }
 
 // 从 VANILLA_BLOCKS 归纳「类名 -> 代表属性」，供模组方块（无内置 flags）按类型回退。

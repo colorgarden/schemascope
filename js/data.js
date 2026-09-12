@@ -4,7 +4,7 @@
 // =============================================================================
 
 // 全量官方中文名（由 bundle_zh_CN.properties 生成）
-import { CN_BLOCKS, CN_ITEMS, CN_LIQUIDS } from "./cn_data.js?v=20260913g";
+import { CN_BLOCKS, CN_ITEMS, CN_LIQUIDS } from "./cn_data.js?v=20260913h";
 
 // CDN 前缀：只用 jsdelivr 的 @master（始终取最新贴图，允许跨域）
 export const CDN_PREFIX = "https://cdn.jsdelivr.net/gh/Anuken/Mindustry@master/";
@@ -384,6 +384,18 @@ export const BRIDGE_BLOCKS = new Set([
   "reinforced-bridge",
 ]);
 export const BRIDGE_RANGE = { "phase-conduit": 12, "phase-bridge": 12 };
+
+/**
+ * 默认队伍（sharded，玩家默认"黄队"）的官方调色板。
+ * 来源：Team.java `sharded = new Team(1, "sharded", Pal.accent, ffd37f, eab678, d4816b)`；
+ * 映射规则见 Block.java 1558+（ffffffff→0、dcc6c6→1、9d7f7f→2，其余原样）。
+ * 用于核心/仓库/容器等 `<name>-team` 覆盖层的着色。
+ */
+export const TEAM_PALETTE = [
+  [0xff, 0xd3, 0x7f],
+  [0xea, 0xb6, 0x78],
+  [0xd4, 0x81, 0x6b],
+];
 
 /**
  * 无本体贴图的方块（传送带/导管/管道等只有旋转变体）的兜底贴图名候选（按优先级）。

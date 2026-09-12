@@ -789,6 +789,68 @@ async function testMods() {
       setModColors(new Map());
     }
 
+    // ---- 队伍色覆盖层（核心/仓库/容器：<name>-team 按默认队 sharded/黄队调色）----
+    {
+      const w = TILE;
+      const mk = (fill) => {
+        const rgba = new Uint8ClampedArray(w * w * 4);
+        for (let i = 0; i < w * w; i++) {
+          rgba[i * 4] = fill[0]; rgba[i * 4 + 1] = fill[1]; rgba[i * 4 + 2] = fill[2]; rgba[i * 4 + 3] = 255;
+        }
+        return { w, h: w, size: 1, rgba, placeholder: false };
+      };
+      const base = mk([10, 10, 10]);
+      const team = mk([0, 0, 0]);
+      for (let i = 0; i < w * w; i++) team.rgba[i * 4 + 3] = 0; // 透明
+      for (let y = 12; y < 20; y++) {
+        for (let x = 12; x < 20; x++) {
+          const o = (y * w + x) * 4;
+          team.rgba[o] = 255; team.rgba[o + 1] = 255; team.rgba[o + 2] = 255; team.rgba[o + 3] = 255;
+        }
+      }
+      const schem = { width: 1, height: 1, tiles: [{ block: "container", x: 0, y: 0, rot: 0, config_type: "null", config: null }] };
+      const out = renderSchematic(schem, { container: base, "container-team": team }, { scale: 1, pad: 0, transparent: true, grid: false });
+      const p = (16 * w + 16) * 4;
+      check(
+        "队伍色覆盖层 = 默认黄队 #ffd37f",
+        out.rgba[p] === 0xff && out.rgba[p + 1] === 0xd3 && out.rgba[p + 2] === 0x7f,
+        [out.rgba[p], out.rgba[p + 1], out.rgba[p + 2]].join(",")
+      );
+      const idxTeam = JSON.parse(fs.readFileSync(new URL("../sprite_index.json", import.meta.url), "utf8"));
+      check("索引含 container-team/core-shard-team", !!idxTeam.blocks["container-team"] && !!idxTeam.blocks["core-shard-team"]);
+    }
+
+    // ---- 单位工厂：本体不旋转 + factory-out-<size> 开口随旋转 ----
+    {
+      const S = 3 * TILE; // 3×3 工厂
+      const mkSolid = (fill) => {
+        const rgba = new Uint8ClampedArray(S * S * 4);
+        for (let i = 0; i < S * S; i++) {
+          rgba[i * 4] = fill[0]; rgba[i * 4 + 1] = fill[1]; rgba[i * 4 + 2] = fill[2]; rgba[i * 4 + 3] = 255;
+        }
+        return { w: S, h: S, size: 3, rgba, placeholder: false };
+      };
+      const fbase = mkSolid([10, 10, 10]);
+      const fout = mkSolid([0, 0, 0]);
+      for (let i = 0; i < S * S; i++) fout.rgba[i * 4 + 3] = 0;
+      // 右侧一条白条（rot0 前进方向=东，便于验证旋转）
+      for (let y = S / 2 - 6; y < S / 2 + 6; y++) {
+        for (let x = S - 12; x < S - 2; x++) {
+          const o = (y * S + x) * 4;
+          fout.rgba[o] = 255; fout.rgba[o + 1] = 255; fout.rgba[o + 2] = 255; fout.rgba[o + 3] = 255;
+        }
+      }
+      const sprites = { "ground-factory": fbase, "factory-out-3": fout };
+      const mkSchem = (rot) => ({ width: 3, height: 3, tiles: [{ block: "ground-factory", x: 0, y: 0, rot, config_type: "null", config: null }] });
+      const r0 = renderSchematic(mkSchem(0), sprites, { scale: 1, pad: 0, transparent: true, grid: false });
+      const r1 = renderSchematic(mkSchem(1), sprites, { scale: 1, pad: 0, transparent: true, grid: false });
+      const px = (img, x, y) => img.rgba[(y * S + x) * 4];
+      check("工厂 rot=0：开口在右侧", px(r0, S - 6, S / 2) > 200, String(px(r0, S - 6, S / 2)));
+      check("工厂 rot=1：开口旋到上方", px(r1, S / 2, 6) > 200, String(px(r1, S / 2, 6)));
+      const idxF = JSON.parse(fs.readFileSync(new URL("../sprite_index.json", import.meta.url), "utf8"));
+      check("索引含 factory-out-3/5/7/9", ["factory-out-3", "factory-out-5", "factory-out-7", "factory-out-9"].every((k) => !!idxF.blocks[k]));
+    }
+
     // ---- 模组电力节点（type=PowerNode）----
     const node1 = m.blocks.get("饱和火力-裂位节点");
     const node2 = m.blocks.get("饱和火力-装甲节点");

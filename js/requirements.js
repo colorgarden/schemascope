@@ -5,8 +5,8 @@
 // 直接累加，无任何倍率；没有数据的方块跳过。
 // =============================================================================
 
-import { BLOCK_REQUIREMENTS, ITEM_CN } from "./requirements_data.js?v=20260913g";
-import { CONTENT_CN } from "./data.js?v=20260913g";
+import { BLOCK_REQUIREMENTS, ITEM_CN } from "./requirements_data.js?v=20260913h";
+import { CONTENT_CN } from "./data.js?v=20260913h";
 
 /**
  * 累加蓝图总耗材。

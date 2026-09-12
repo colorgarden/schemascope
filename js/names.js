@@ -5,7 +5,7 @@
 // bundle 键尝试：block.<内部名>.name；若名字带 `<mod>-` 前缀再尝试 block.<base>.name。
 // =============================================================================
 
-import { BLOCK_CN } from "./data.js?v=20260913g";
+import { BLOCK_CN } from "./data.js?v=20260913h";
 
 /** 生成候选名：原内部名；若带某模组 `<name>-` 前缀，再补去前缀的 base。 */
 export function modNameCandidates(name, mods) {

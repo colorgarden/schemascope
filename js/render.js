@@ -21,7 +21,8 @@ import {
   BRIDGE_RANGE,
   BRIDGE_WIDTH,
   BRIDGE_OPACITY,
-} from "./data.js?v=20260913g";
+  TEAM_PALETTE,
+} from "./data.js?v=20260913h";
 import {
   vanillaRule,
   rangeOfBlock,
@@ -32,13 +33,15 @@ import {
   blockProps,
   isAutotilerBlock,
   isTurretBlock,
+  isFactoryBlock,
+  factorySpriteNames,
   turretInfo,
   turretFallbackBaseName,
   typeOfBlock,
   sizeOfBlock,
   baseOf,
-} from "./render_rules.js?v=20260913g";
-import { makeTileWorld, buildBlending } from "./blending.js?v=20260913g";
+} from "./render_rules.js?v=20260913h";
+import { makeTileWorld, buildBlending } from "./blending.js?v=20260913h";
 
 /** 仅取自有属性，避免方块名（如 "constructor"）撞上 Object.prototype 上的同名属性。 */
 function own(obj, key) {
@@ -333,6 +336,39 @@ export function tintRgba(rgba, color) {
     out[i] = ifloor((rgba[i] * cr) / 255);
     out[i + 1] = ifloor((rgba[i + 1] * cg) / 255);
     out[i + 2] = ifloor((rgba[i + 2] * cb) / 255);
+    out[i + 3] = rgba[i + 3];
+  }
+  return out;
+}
+
+/**
+ * 队伍色覆盖层调色：按官方 Block.java 1558+ 的三档映射把 `<name>-team` 白/灰像素
+ * 换成默认队（sharded/黄队）调色板。
+ */
+const TEAM_INDEX = new Map([
+  ["255,255,255", 0],
+  ["220,198,198", 1],
+  ["219,197,197", 1],
+  ["157,127,127", 2],
+  ["158,128,128", 2],
+  ["157,126,126", 2],
+  ["158,127,127", 2],
+]);
+
+export function recolorTeam(rgba) {
+  const out = new Uint8ClampedArray(rgba.length);
+  for (let i = 0; i < rgba.length; i += 4) {
+    const idx = TEAM_INDEX.get(`${rgba[i]},${rgba[i + 1]},${rgba[i + 2]}`);
+    if (idx === undefined) {
+      out[i] = rgba[i];
+      out[i + 1] = rgba[i + 1];
+      out[i + 2] = rgba[i + 2];
+    } else {
+      const c = TEAM_PALETTE[idx];
+      out[i] = c[0];
+      out[i + 1] = c[1];
+      out[i + 2] = c[2];
+    }
     out[i + 3] = rgba[i + 3];
   }
   return out;
@@ -856,6 +892,11 @@ function drawBlockSpriteLayers(buf, cw, ch, t, e, sprites, layers, world) {
     drawTurretLayers(buf, cw, ch, t, e, sprites, cx, cy);
     return;
   }
+  // 单位工厂（PayloadBlock）：本体不旋转 + 开口/箭头 outRegion 随旋转 + top
+  if (layers && isFactoryBlock(t.block, MOD_DEFS.get(t.block))) {
+    drawFactoryLayers(buf, cw, ch, t, e, sprites, cx, cy);
+    return;
+  }
 
   const names = layers ? staticLayerNames(t.block, t.rot) : [t.block];
   const ruleOutline = vanillaRule(t.block, MOD_DEFS.get(t.block)).outline;
@@ -970,6 +1011,33 @@ export function drawNodeLaser(buf, cw, ch, x1, y1, size1, x2, y2, size2, sprites
     blitRotated(buf, cw, ch, end.rgba, end.w, end.h, e1x, e1y, capScale, ang + 180, color, alphaScale);
     blitRotated(buf, cw, ch, end.rgba, end.w, end.h, e2x, e2y, capScale, ang, color, alphaScale);
   }
+}
+
+/** 单位工厂（PayloadBlock）：本体不旋转，开口/箭头 outRegion 随方块旋转。
+ *  官方：PayloadBlock.findFactoryRegion（`<name>-out` → `factory-out-<size>`）、
+ *  UnitFactory.draw（region 不转 → outRegion 转 rotdeg() → topRegion）。 */
+function drawFactoryLayers(buf, cw, ch, t, e, sprites, cx, cy) {
+  const paint = (sp, rot) => {
+    const [rw, rh, rrgba] = rot ? rotateSprite(sp.rgba, sp.w, sp.h, rot) : [sp.w, sp.h, sp.rgba];
+    blend(buf, cw, ch, cx - Math.floor(rw / 2), cy - Math.floor(rh / 2), rrgba, rw, rh);
+  };
+  const size = e.size;
+  const base = getSprite(sprites, t.block, false);
+  if (base) paint(base, 0);
+  const out = getSprite(sprites, t.block + "-out", true) || getSprite(sprites, "factory-out-" + size, true);
+  if (out) paint(out, t.rot);
+  const top = getSprite(sprites, t.block + "-top", true) || getSprite(sprites, "factory-top-" + size, true);
+  if (top) paint(top, 0);
+}
+
+/** 队伍色覆盖层：`<block>-team` 按默认队（sharded/黄队）调色板重着色后叠在方块之上。 */
+function drawTeamOverlay(buf, cw, ch, t, e, sprites) {
+  const sp = getSprite(sprites, t.block + "-team", true);
+  if (!sp) return;
+  const cx = e.px + Math.floor((e.size * TILE) / 2);
+  const cy = e.py + Math.floor((e.size * TILE) / 2);
+  const [rw, rh, rrgba] = rotateSprite(recolorTeam(sp.rgba), sp.w, sp.h, t.rot);
+  blend(buf, cw, ch, cx - Math.floor(rw / 2), cy - Math.floor(rh / 2), rrgba, rw, rh);
 }
 
 /** 由模组节点参数（scale/color1/color2）计算 drawNodeLaser 的 opts。 */
@@ -1159,6 +1227,7 @@ export function renderSchematic(schem, sprites, opts = {}) {
       drawConfigUnderlay(buf, cw, ch, t, e, sprites);
     }
     drawBlockSpriteLayers(buf, cw, ch, t, e, sprites, layers, blendWorld);
+    if (layers) drawTeamOverlay(buf, cw, ch, t, e, sprites);
     if (configIcons && (kind === "centerTint" || kind === "liquidSource")) {
       drawConfigOverlay(buf, cw, ch, t, e, sprites, layers, kind, blendWorld);
     }

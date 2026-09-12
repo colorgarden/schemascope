@@ -10,22 +10,22 @@ import {
   AUX_PATHS,
   DEFAULT_SCALE,
   DEFAULT_PAD,
-} from "./data.js?v=20260913g";
-import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913g";
-import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913g";
-import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock, isAutotilerBlock, isTurretBlock, turretSpriteNames, autotilerSpriteNames, selectMissingSprites } from "./render_rules.js?v=20260913g";
-import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260913g";
-import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913g";
-import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913g";
-import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913g";
-import { requirementsList } from "./requirements.js?v=20260913g";
-import { BLOCK_REQUIREMENTS } from "./requirements_data.js?v=20260913g";
-import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913g";
-import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913g";
-import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913g";
+} from "./data.js?v=20260913h";
+import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913h";
+import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913h";
+import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock, isAutotilerBlock, isTurretBlock, isFactoryBlock, factorySpriteNames, sizeOfBlock, turretSpriteNames, autotilerSpriteNames, selectMissingSprites } from "./render_rules.js?v=20260913h";
+import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260913h";
+import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913h";
+import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913h";
+import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913h";
+import { requirementsList } from "./requirements.js?v=20260913h";
+import { BLOCK_REQUIREMENTS } from "./requirements_data.js?v=20260913h";
+import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913h";
+import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913h";
+import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913h";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260913g";
+const APP_VERSION = "20260913h";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -611,7 +611,11 @@ function collectNeeded(schem) {
   for (const t of schem.tiles) {
     const def = modDefs.get(t.block);
     const isMod = !!def;
-    if (isTurretBlock(t.block, def)) {
+    if (isFactoryBlock(t.block, def)) {
+      // 工厂：本体（必需）+ 开口/箭头（<name>-out → factory-out-<size>）+ top
+      add(t.block, true);
+      for (const n of factorySpriteNames(t.block, sizeOfBlock(t.block, def))) addOpt(n, isMod);
+    } else if (isTurretBlock(t.block, def)) {
       // 炮塔：base + 本体 + top + RegionPart 部件（缺失即跳过，不产生占位框）
       for (const n of turretSpriteNames(t.block, def)) addOpt(n, isMod);
     } else if (isAutotilerBlock(t.block, def)) {
@@ -633,6 +637,8 @@ function collectNeeded(schem) {
       addOpt(t.block + "-bridge", isMod);
       addOpt(t.block + "-arrow", isMod);
     }
+    // 队伍色覆盖层（核心/仓库/容器等）：仅当索引中存在该贴图时请求
+    if (spriteRelPath(t.block + "-team")) addOpt(t.block + "-team", isMod);
     for (const n of configSpriteNamesFor(t.block, def)) addOpt(n, isMod);
   }
   for (const n of ["center", "cross", "cross-full", "laser", "laser-end", "schematic-background"]) add(n, false);
