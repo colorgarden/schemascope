@@ -13,6 +13,7 @@ import {
   DEFAULT_SCALE,
   DEFAULT_PAD,
   configSpriteNames,
+  spriteAliasCandidates,
 } from "./data.js";
 import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js";
 import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js";
@@ -27,7 +28,7 @@ import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resol
 import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260913a";
+const APP_VERSION = "20260913b";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -419,6 +420,9 @@ async function findModSpriteExact(key) {
 function isKnownBlock(name) {
   if (spriteIndex.blocks && spriteIndex.blocks[name]) return true;
   if (spriteIndex.all && spriteIndex.all[name]) return true;
+  for (const c of spriteAliasCandidates(name)) {
+    if ((spriteIndex.blocks && spriteIndex.blocks[c]) || (spriteIndex.all && spriteIndex.all[c])) return true;
+  }
   if (modBlockSizes.has(name)) return true;
   for (const c of modSpriteCandidates(name, modNames)) {
     if (modBlockSizes.has(c) || (spriteIndex.all && spriteIndex.all[c]) || (spriteIndex.blocks && spriteIndex.blocks[c])) {
@@ -484,8 +488,14 @@ async function loadSprite(name, required) {
     }
   }
 
-  // 3. CDN（vanilla 索引；镜像源自动切换）
-  const rel = spriteRelPath(name);
+  // 3. CDN（vanilla 索引；镜像源自动切换）；无本体图时用变体兜底（传送带 -0-0 / 导管 -bottom 等）
+  let rel = spriteRelPath(name);
+  if (!rel) {
+    for (const c of spriteAliasCandidates(name)) {
+      rel = spriteRelPath(c);
+      if (rel) break;
+    }
+  }
   if (rel) {
     try {
       const bmp = await fetchBitmapMindustry(rel.base + rel.path);

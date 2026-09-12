@@ -37,7 +37,7 @@ import {
   nodeLaserOpts,
 } from "../js/render.js";
 import { blockDisplayName, modNameCandidates, spriteDisplayName } from "../js/names.js";
-import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN, CONTENT_COLORS, CONFIG_UNDERLAY, CONFIG_OVERLAY, configSpriteNames } from "../js/data.js";
+import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN, CONTENT_COLORS, CONFIG_UNDERLAY, CONFIG_OVERLAY, configSpriteNames, spriteAliasCandidates } from "../js/data.js";
 import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, ICON_FONT_LO } from "../js/icons.js";
 import { ICON_BY_CODE, ICON_LOCAL_CODES } from "../js/icons_data.js";
 import { simpleHash, createPrefetchManager } from "../js/prefetch.js";
@@ -1137,6 +1137,25 @@ function testConfigRender() {
     check("duct-unloader-center 路径以 distribution/ducts 结尾", /distribution\/ducts\/duct-unloader-center\.png$/.test(idx.aux["duct-unloader-center"] || ""), idx.aux["duct-unloader-center"]);
     check("aux 含 cross-full/fluid/source-bottom", !!(idx.aux["cross-full"] && idx.aux["fluid"] && idx.aux["source-bottom"]), JSON.stringify({ c: idx.aux["cross-full"], f: idx.aux["fluid"], s: idx.aux["source-bottom"] }));
   }
+
+  // 变体兜底：传送带/导管/管道在上游只有旋转变体、没有本体图
+  check(
+    "spriteAliasCandidates 顺序",
+    JSON.stringify(spriteAliasCandidates("titanium-conveyor")) === JSON.stringify(["titanium-conveyor-0-0", "titanium-conveyor-bottom", "titanium-conveyor-top-0"]),
+    JSON.stringify(spriteAliasCandidates("titanium-conveyor"))
+  );
+  {
+    const idx = JSON.parse(fs.readFileSync(new URL("../sprite_index.json", import.meta.url), "utf8"));
+    check("索引含变体（传送带 -0-0）", !!idx.blocks["titanium-conveyor-0-0"] && !!idx.blocks["conveyor-0-0"], "titanium-conveyor-0-0");
+    check("索引含变体（导管 -bottom / 管道 -top-0）", !!idx.blocks["conduit-bottom"] && !!idx.blocks["armored-duct-top-0"], "conduit-bottom/armored-duct-top-0");
+  }
+  check(
+    "LAYERS：导管/管道双层",
+    JSON.stringify(LAYERS["conduit"]) === JSON.stringify(["conduit-bottom", "conduit-top-0"]) &&
+      JSON.stringify(LAYERS["duct"]) === JSON.stringify(["duct-bottom", "duct-top-0"]) &&
+      JSON.stringify(LAYERS["armored-duct"]) === JSON.stringify(["duct-bottom", "armored-duct-top-0"]),
+    JSON.stringify({ c: LAYERS["conduit"], d: LAYERS["duct"], a: LAYERS["armored-duct"] })
+  );
 
   // fillRect
   const fb = new Uint8ClampedArray(4 * 4 * 4);

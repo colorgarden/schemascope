@@ -215,6 +215,14 @@ export const LAYERS = {
   thruster: ["thruster", "thruster-top"],
   "liquid-overflow-gate": ["liquid-overflow-gate", "liquid-overflow-gate-top"],
 
+  // 导管/管道：无本体图，共享底图 + 顶部旋转变体（静止渲染用 -top-0 再随方块旋转）
+  conduit: ["conduit-bottom", "conduit-top-0"],
+  "pulse-conduit": ["conduit-bottom", "pulse-conduit-top-0"],
+  "plated-conduit": ["conduit-bottom", "plated-conduit-top-0"],
+  "reinforced-conduit": ["conduit-bottom", "reinforced-conduit-top-0"],
+  duct: ["duct-bottom", "duct-top-0"],
+  "armored-duct": ["duct-bottom", "armored-duct-top-0"],
+
   // 原版顶盖（按用户要求恢复；官方为常驻或静态可见的顶层 region）
   kiln: ["kiln", "kiln-top"],
   "silicon-smelter": ["silicon-smelter", "silicon-smelter-top"],
@@ -376,6 +384,14 @@ export const BRIDGE_BLOCKS = new Set([
   "reinforced-bridge",
 ]);
 export const BRIDGE_RANGE = { "phase-conduit": 12, "phase-bridge": 12 };
+
+/**
+ * 无本体贴图的方块（传送带/导管/管道等只有旋转变体）的兜底贴图名候选（按优先级）。
+ * 例：titanium-conveyor → titanium-conveyor-0-0；conduit → conduit-bottom；armored-duct → armored-duct-top-0。
+ */
+export function spriteAliasCandidates(name) {
+  return [name + "-0-0", name + "-bottom", name + "-top-0"];
+}
 // 连接带宽 = 24px（用户指定）
 export const BRIDGE_WIDTH = 24;
 // 桥连接透明度（用户要求降低不透明度 = 更透）
