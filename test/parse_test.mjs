@@ -56,6 +56,7 @@ import {
   turretFallbackBaseName,
   turretSpriteNames,
   autotilerSpriteNames,
+  selectMissingSprites,
 } from "../js/render_rules.js";
 import { VANILLA_TURRETS } from "../js/vanilla_turrets.js";
 import { makeTileWorld, buildBlending, transformCase, mod4, d4x, d4y, relativeTo, getFacingEdge, blends } from "../js/blending.js";
@@ -1858,6 +1859,102 @@ function testTurretParts() {
 }
 
 // -----------------------------------------------------------------------------
+// 8.6 原版贴图请求 / 识别审查（误报「贴图缺失 / 未识别」全量排查）
+// -----------------------------------------------------------------------------
+function testSpriteAudit() {
+  console.log("== 原版贴图请求/识别审查测试 ==");
+  const idx = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "sprite_index.json"), "utf8"));
+  const exists = (n) => !!(idx.blocks[n] || idx.all[n]);
+  // 与 loadSprite 一致的「可解析」：本体 / 类型变体 / 序号帧
+  const resolvable = (n) => {
+    if (exists(n)) return true;
+    for (const c of spriteVariantCandidates(n)) if (exists(c)) return true;
+    if (exists(n + "1")) return true;
+    return false;
+  };
+  // 环境/装饰与旧版块不参与蓝图渲染，缺图可接受
+  const ENV_TYPES = new Set([
+    "Floor", "StaticWall", "StaticProp", "Prop", "StaticTree", "TreeBlock", "SeaBush", "Seaweed",
+    "ShallowLiquid", "OverlayFloor", "Cliff", "TallBlock", "CharacterOverlay", "RuneOverlay",
+    "ColoredFloor", "ColoredWall", "SteamVent", "AirBlock", "SpawnBlock", "RemoveOre", "RemoveWall",
+    "LegacyCommandCenter", "LegacyMechPad", "LegacyUnitFactory",
+  ]);
+  const isEnv = (b) => ENV_TYPES.has(typeOfBlock(b)) || b.startsWith("legacy-");
+
+  // 复刻 main.js collectNeeded 的请求逻辑（含「可选层只在索引存在时请求」）
+  const neededFor = (b) => {
+    const needed = new Map();
+    const add = (n, req) => { if (!n) return; if (!needed.has(n)) needed.set(n, req); else if (req) needed.set(n, true); };
+    const addOpt = (n) => { if (exists(n)) add(n, false); };
+    if (isTurretBlock(b)) {
+      for (const n of turretSpriteNames(b)) addOpt(n);
+    } else if (isAutotilerBlock(b)) {
+      const names = autotilerSpriteNames(b);
+      if (names.length) add(names[0], true);
+      for (const n of names) addOpt(n);
+    } else {
+      add(b, true);
+      for (const l of staticLayerNames(b, 0)) {
+        const lname = typeof l === "string" ? l : l && l.name;
+        if (!lname) continue;
+        if (lname === b) add(lname, true);
+        else addOpt(lname);
+      }
+    }
+    if (isBridgeBlockName(b)) { addOpt(b + "-bridge"); addOpt(b + "-arrow"); }
+    for (const n of configSpriteNamesFor(b)) addOpt(n);
+    return needed;
+  };
+  const isKnown = (b) => {
+    if (exists(b)) return true;
+    for (const c of spriteVariantCandidates(b)) if (exists(c)) return true;
+    if (exists(b + "1")) return true;
+    return !!typeOfBlock(b);
+  };
+
+  const blocks = Object.keys(VANILLA_BLOCKS);
+  const requiredMissing = [];
+  const unknown = [];
+  let optRequested = 0;
+  let optMissingRequested = 0;
+  for (const b of blocks) {
+    const needed = neededFor(b);
+    for (const [n, req] of needed) {
+      if (req) { if (!resolvable(n) && !isEnv(b)) requiredMissing.push(`${b} -> ${n}`); }
+      else {
+        optRequested++;
+        if (!exists(n)) optMissingRequested++;
+      }
+    }
+    if (!isKnown(b) && !isEnv(b)) unknown.push(`${b}(${typeOfBlock(b)})`);
+  }
+  check(`原版方块 ${blocks.length} 个`, blocks.length >= 400, `${blocks.length}`);
+  check("无「必需贴图缺失」误报（环境/旧版除外）", requiredMissing.length === 0, requiredMissing.slice(0, 12).join(", "));
+  check("无「未识别方块」误报", unknown.length === 0, unknown.slice(0, 12).join(", "));
+  check("可选层请求全部命中索引（无无谓 404）", optMissingRequested === 0, `missing optional=${optMissingRequested}/${optRequested}`);
+
+  // air-factory：有本体、不请求不存在的 air-factory-top
+  const af = neededFor("air-factory");
+  check("air-factory 本体必需", af.get("air-factory") === true);
+  check("air-factory 不请求不存在的 -top", !af.has("air-factory-top"));
+  check("air-factory 被视为已知方块", isKnown("air-factory"));
+
+  // 警告策略：只有 required 缺失才进 missing
+  const fake = (name, required, sprite) => ({ name, required, sprite });
+  check("selectMissingSprites 忽略可选缺失",
+    deepEqual(selectMissingSprites([fake("air-factory", true, { placeholder: false }), fake("air-factory-top", false, null)]), []));
+  check("selectMissingSprites 报告必需缺失",
+    deepEqual(selectMissingSprites([fake("air-factory", true, null), fake("x-top", false, { placeholder: true })]), ["air-factory"]));
+
+  // 原型键撞名回归：constructor 方块必须得到数组层名、请求不崩
+  const cLayers = staticLayerNames("constructor", 0);
+  check("constructor 层名为数组", Array.isArray(cLayers) && cLayers.length > 0, JSON.stringify(cLayers));
+  let threw = false;
+  try { neededFor("constructor"); } catch (e) { threw = true; }
+  check("constructor 收集需求不抛错", !threw);
+}
+
+// -----------------------------------------------------------------------------
 // 9. 镜像源切换 / 超时 / 缓存（注入 mock fetch 与 mock Cache Storage）
 // -----------------------------------------------------------------------------
 async function testNet() {
@@ -2107,6 +2204,7 @@ async function main() {
   testRenderRules();
   testBlending();
   testTurretParts();
+  testSpriteAudit();
   await testV0();
   await testNet();
 

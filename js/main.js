@@ -10,22 +10,22 @@ import {
   AUX_PATHS,
   DEFAULT_SCALE,
   DEFAULT_PAD,
-} from "./data.js?v=20260913f";
-import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913f";
-import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913f";
-import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock, isAutotilerBlock, isTurretBlock, turretSpriteNames, autotilerSpriteNames } from "./render_rules.js?v=20260913f";
-import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260913f";
-import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913f";
-import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913f";
-import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913f";
-import { requirementsList } from "./requirements.js?v=20260913f";
-import { BLOCK_REQUIREMENTS } from "./requirements_data.js?v=20260913f";
-import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913f";
-import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913f";
-import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913f";
+} from "./data.js?v=20260913g";
+import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913g";
+import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913g";
+import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock, isAutotilerBlock, isTurretBlock, turretSpriteNames, autotilerSpriteNames, selectMissingSprites } from "./render_rules.js?v=20260913g";
+import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260913g";
+import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913g";
+import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913g";
+import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913g";
+import { requirementsList } from "./requirements.js?v=20260913g";
+import { BLOCK_REQUIREMENTS } from "./requirements_data.js?v=20260913g";
+import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913g";
+import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913g";
+import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913g";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260913f";
+const APP_VERSION = "20260913g";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -597,31 +597,43 @@ async function loadSprite(name, required) {
 function collectNeeded(schem) {
   const needed = new Map();
   const add = (n, req) => {
+    if (!n) return;
     if (!needed.has(n)) needed.set(n, req);
     else if (req) needed.set(n, true);
   };
+  // 可选层过滤：vanilla 贴图只请求索引中确实存在的名字，避免无谓的 404/CDN 超时；
+  // 模组贴图来源在 zip 内、索引未知，故模组方块一律保留（isMod=true）。
+  const idxReady = !!(spriteIndex && spriteIndex.all);
+  const hasIndex = (n) => !!((spriteIndex.blocks && spriteIndex.blocks[n]) || (spriteIndex.all && spriteIndex.all[n]));
+  const addOpt = (n, isMod) => {
+    if (isMod || !idxReady || hasIndex(n)) add(n, false);
+  };
   for (const t of schem.tiles) {
     const def = modDefs.get(t.block);
+    const isMod = !!def;
     if (isTurretBlock(t.block, def)) {
       // 炮塔：base + 本体 + top + RegionPart 部件（缺失即跳过，不产生占位框）
-      for (const n of turretSpriteNames(t.block, def)) add(n, false);
+      for (const n of turretSpriteNames(t.block, def)) addOpt(n, isMod);
     } else if (isAutotilerBlock(t.block, def)) {
-      // 拼接系列：0..4 号连接变体
-      add(t.block, true);
-      for (const n of autotilerSpriteNames(t.block, def)) add(n, false);
+      // 拼接系列：0 号连接变体为必需底座，其余 1..4 号可选
+      const names = autotilerSpriteNames(t.block, def);
+      if (names.length) add(names[0], true);
+      for (const n of names) addOpt(n, isMod);
     } else {
       add(t.block, true);
       // 图层：模组 drawer / 类型规则 / vanilla LAYERS 统一解析（含变体兜底）
       for (const l of staticLayerNames(t.block, t.rot)) {
         const lname = typeof l === "string" ? l : l && l.name;
-        if (lname) add(lname, lname === t.block);
+        if (!lname) continue;
+        if (lname === t.block) add(lname, true);
+        else addOpt(lname, isMod);
       }
     }
     if (isBridgeBlockName(t.block)) {
-      add(t.block + "-bridge", false);
-      add(t.block + "-arrow", false);
+      addOpt(t.block + "-bridge", isMod);
+      addOpt(t.block + "-arrow", isMod);
     }
-    for (const n of configSpriteNamesFor(t.block, modDefs.get(t.block))) add(n, false);
+    for (const n of configSpriteNamesFor(t.block, def)) addOpt(n, isMod);
   }
   for (const n of ["center", "cross", "cross-full", "laser", "laser-end", "schematic-background"]) add(n, false);
   return needed;
@@ -631,21 +643,22 @@ async function loadAllSprites(needed, onProgress) {
   const names = [...needed.keys()];
   const total = names.length;
   let done = 0;
-  const missing = [];
+  const results = [];
   const batchSize = 16;
   for (let i = 0; i < names.length; i += batchSize) {
     const batch = names.slice(i, i + batchSize);
     await Promise.all(
       batch.map(async (name) => {
-        const sp = await loadSprite(name, needed.get(name));
-        if (!sp) missing.push(name);
-        else if (sp.placeholder) missing.push(name);
+        const required = !!needed.get(name);
+        const sp = await loadSprite(name, required);
+        results.push({ name, required, sprite: sp });
         done++;
         if (onProgress) onProgress(done, total, name);
       })
     );
   }
-  return { missing, total };
+  // 只有 required 缺失才进「贴图缺失」警告；可选层缺失属正常
+  return { missing: selectMissingSprites(results), total };
 }
 
 // -----------------------------------------------------------------------------

@@ -25,8 +25,13 @@
 // 从而保持既有校验效果。
 // =============================================================================
 
-import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260913f";
-import { VANILLA_TURRETS } from "./vanilla_turrets.js?v=20260913f";
+import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260913g";
+import { VANILLA_TURRETS } from "./vanilla_turrets.js?v=20260913g";
+
+/** 仅取自有属性，避免方块名（如 "constructor"）撞上 Object.prototype 上的同名属性。 */
+function own(obj, key) {
+  return obj != null && Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined;
+}
 
 // -----------------------------------------------------------------------------
 // 基础解析：方块名 + 可选模组 def → type / size / range
@@ -41,14 +46,14 @@ export function baseOf(blockName, def) {
 /** 解析方块类型（官方 Java 类名）：模组 def.type 优先，其次内置 vanilla 表。 */
 export function typeOfBlock(blockName, def) {
   if (def && def.type) return String(def.type);
-  const v = VANILLA_BLOCKS[blockName];
+  const v = own(VANILLA_BLOCKS, blockName);
   return v ? String(v.type) : "";
 }
 
 /** 解析占地尺寸：def.size 优先，其次 vanilla 表，默认 1。 */
 export function sizeOfBlock(blockName, def) {
   if (def && Number(def.size) > 0) return Number(def.size);
-  const v = VANILLA_BLOCKS[blockName];
+  const v = own(VANILLA_BLOCKS, blockName);
   if (v && Number(v.size) > 0) return Number(v.size);
   return 1;
 }
@@ -58,7 +63,7 @@ export function rangeOfBlock(blockName, def) {
   if (def && def.range !== undefined && def.range !== null && !Number.isNaN(Number(def.range))) {
     return Number(def.range);
   }
-  const v = VANILLA_BLOCKS[blockName];
+  const v = own(VANILLA_BLOCKS, blockName);
   if (v && v.range !== undefined) return Number(v.range);
   return undefined;
 }
@@ -299,7 +304,7 @@ export function vanillaRule(blockName, def) {
   const cacheKey = key + "|" + baseOf(blockName, def);
   if (ruleCache.has(cacheKey)) return ruleCache.get(cacheKey);
 
-  const spec = TYPE_RULES[key] || {};
+  const spec = own(TYPE_RULES, key) || {};
   const n = baseOf(blockName, def);
   const bridgeInfo = isBridgeType(type) ? { range: bridgeRange(blockName, def) } : null;
 
@@ -409,7 +414,7 @@ function typeFlagDefaults(type) {
   if (_typeFlagDefaults === null) {
     _typeFlagDefaults = new Map();
     for (const n of Object.keys(VANILLA_BLOCKS)) {
-      const v = VANILLA_BLOCKS[n];
+      const v = own(VANILLA_BLOCKS, n);
       if (!v || !v.type) continue;
       if (!_typeFlagDefaults.has(v.type)) _typeFlagDefaults.set(v.type, v.flags || {});
     }
@@ -423,7 +428,7 @@ function typeFlagDefaults(type) {
  */
 export function blockProps(blockName, def) {
   const type = typeOfBlock(blockName, def);
-  const v = VANILLA_BLOCKS[blockName];
+  const v = own(VANILLA_BLOCKS, blockName);
   const explicit = (v && v.flags) || {};
   const modFlags = (def && def.flags) || {};
   const f = Object.assign({}, typeFlagDefaults(type), explicit, modFlags);
@@ -451,7 +456,7 @@ export function blockProps(blockName, def) {
 /** 炮塔 DrawTurret 信息：basePrefix 与 RegionPart 静态几何（vanilla 内置表 / 模组 def）。 */
 export function turretInfo(blockName, def) {
   const n = baseOf(blockName, def);
-  const v = VANILLA_TURRETS[blockName];
+  const v = own(VANILLA_TURRETS, blockName);
   const m = def && def.turret;
   const basePrefix = (v && v.basePrefix) || (m && m.basePrefix) || (def && def.basePrefix) || "";
   let parts = (v && v.parts) || (m && m.parts) || (def && def.parts) || [];
@@ -508,4 +513,19 @@ export function autotilerSpriteNames(blockName, def) {
     }
   }
   return out;
+}
+
+/**
+ * 从「贴图加载结果」中筛出应报告的缺失项：**只有 required 缺失才报**。
+ * 可选层（炮塔 -top/-base、工厂 -top、桥 -bridge/-arrow 等）缺失属正常，不应进警告。
+ * @param {Array<{name:string, required:boolean, sprite:object|null}>} results
+ * @returns {string[]}
+ */
+export function selectMissingSprites(results) {
+  const missing = [];
+  for (const r of results) {
+    if (!r || !r.required) continue;
+    if (!r.sprite || r.sprite.placeholder) missing.push(r.name);
+  }
+  return missing;
 }

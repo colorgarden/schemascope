@@ -235,6 +235,13 @@ UI emoji → 去掉。
   如 `裂位能1.png`、`二级协议1.png`）；模组方块贴图候选同样在最后追加 `<name>1`。
 - **限制**：JSON / 混合模组可完整支持建筑与耗材；**纯 dex 模组**（无 JSON 方块定义）
   只能按文件名使用其贴图，无法获取建筑尺寸与耗材。
+- **「贴图缺失」只在必需贴图缺失时提示**：可选层（炮塔 `-base`/`-top`、工厂 `-top`、
+  桥 `-bridge`/`-arrow` 等不存在的层）缺失属正常，不再误报（`selectMissingSprites`）。
+  同时收集贴图时对 vanilla 只请求 `sprite_index.json` 中确实存在的可选层，避免无谓的
+  CDN 404；规范底座缺失时按 `spriteVariantCandidates`（如传送带 `<名>-0-0`、墙壁 `<名>1`）
+  解析。审查已固化为测试：遍历全部原版方块断言「无必需贴图缺失 / 无未识别方块 / 无可选层
+  空请求」（环境/旧版方块除外）。另修复 `constructor` 等方块名撞上 `Object.prototype`
+  同名属性导致的层名错乱。
 - 模组变化后会清空内存贴图缓存并自动重渲染当前蓝图；未识别方块会在状态栏提示可能缺少的模组。
 
 ## 七、输入即解析与持久化缓存
@@ -358,7 +365,8 @@ node test/parse_test.mjs
 `test/parse_test.mjs` 会读取本地测试样本（路径在文件顶部，可自行修改），
 逐字段比对解析结果，并运行渲染器关键算法单测
 （footprint/中心坐标、多层叠加、描边膨胀、flat-top 光束采样、桥配对、
-邻居拼接 buildBlending 的直/弯/T/十字与旋转不变性、炮塔 base/本体/部件合成）
+邻居拼接 buildBlending 的直/弯/T/十字与旋转不变性、炮塔 base/本体/部件合成、
+原版全量贴图请求/识别审查）
 与 PUA 图标单测（`resolveIcon` 锚点、`richText`/`plainTextWithIcons`）。
 需要 Node 18+（内置 `DecompressionStream`）。
 

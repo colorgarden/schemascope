@@ -21,7 +21,7 @@ import {
   BRIDGE_RANGE,
   BRIDGE_WIDTH,
   BRIDGE_OPACITY,
-} from "./data.js?v=20260913f";
+} from "./data.js?v=20260913g";
 import {
   vanillaRule,
   rangeOfBlock,
@@ -37,8 +37,13 @@ import {
   typeOfBlock,
   sizeOfBlock,
   baseOf,
-} from "./render_rules.js?v=20260913f";
-import { makeTileWorld, buildBlending } from "./blending.js?v=20260913f";
+} from "./render_rules.js?v=20260913g";
+import { makeTileWorld, buildBlending } from "./blending.js?v=20260913g";
+
+/** 仅取自有属性，避免方块名（如 "constructor"）撞上 Object.prototype 上的同名属性。 */
+function own(obj, key) {
+  return obj != null && Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined;
+}
 
 // 模组方块的多层启发式（仅当 vanilla LAYERS 未定义该块时使用）
 let MOD_LAYERS = {};
@@ -62,13 +67,14 @@ export function setModBlockDefs(map) {
  * regions 返回 null 的类型（drawer 自定义，如 GenericCrafter/LiquidRouter）会回退 LAYERS。
  */
 export function staticLayerNames(block, rot) {
-  if (MOD_LAYERS[block]) return MOD_LAYERS[block];
+  const modLayers = own(MOD_LAYERS, block);
+  if (modLayers) return modLayers;
   const rule = vanillaRule(block, MOD_DEFS.get(block));
   if (rule && typeof rule.regions === "function") {
     const list = rule.regions(rot || 0);
     if (list && list.length) return list;
   }
-  return LAYERS[block] || [block];
+  return own(LAYERS, block) || [block];
 }
 
 // 模组桥（type 以 "Bridge" 结尾）：name -> { range, width }
@@ -89,7 +95,7 @@ export function setModColors(map) {
 
 /** 配置内容色：模组物品色 → 官方物品/液体色 → 白。 */
 function contentColor(cfg) {
-  return MOD_COLORS.get(cfg) || CONTENT_COLORS[cfg] || [255, 255, 255];
+  return MOD_COLORS.get(cfg) || own(CONTENT_COLORS, cfg) || [255, 255, 255];
 }
 
 function toMap(v) {
@@ -177,7 +183,8 @@ export function bridgeRangeOf(name) {
   if (m && m.range !== undefined && m.range !== null) return m.range;
   const r = rangeOfBlock(name, MOD_DEFS.get(name));
   if (r !== undefined) return r;
-  return BRIDGE_RANGE[name] !== undefined ? BRIDGE_RANGE[name] : 4;
+  const br = own(BRIDGE_RANGE, name);
+  return br !== undefined ? br : 4;
 }
 
 /** 桥带宽度：模组 bridgeWidth 按 24px/6.5 等比，否则全局 24。 */
@@ -866,7 +873,7 @@ function drawBlockSpriteLayers(buf, cw, ch, t, e, sprites, layers, world) {
     const sh = sp.h;
     let rgba = sp.rgba;
     // outlineIcon 方块的顶层图标贴图先加描边（规则表 ∪ vanilla ∪ 模组）
-    const outline = ruleOutline || OUTLINE_ICON[t.block] || MOD_OUTLINE.get(t.block);
+    const outline = ruleOutline || own(OUTLINE_ICON, t.block) || MOD_OUTLINE.get(t.block);
     if (li === names.length - 1 && outline) {
       const [ocol, orad] = outline;
       rgba = makeOutline(rgba, sw, sh, ocol, orad);
