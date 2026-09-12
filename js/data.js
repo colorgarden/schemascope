@@ -364,12 +364,16 @@ export const POWER_LASER_WIDTH = 6;
 
 // 桥连接
 export const BRIDGE_BLOCKS = new Set([
-  "bridge",
+  "bridge-conveyor",
+  "phase-conveyor",
   "bridge-conduit",
   "phase-conduit",
+  "reinforced-bridge-conduit",
+  "duct-bridge",
+  // 旧版名称（兼容老蓝图）
+  "bridge",
   "phase-bridge",
   "reinforced-bridge",
-  "reinforced-bridge-conduit",
 ]);
 export const BRIDGE_RANGE = { "phase-conduit": 12, "phase-bridge": 12 };
 // 连接带宽 = 24px（用户指定）

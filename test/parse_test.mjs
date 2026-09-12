@@ -902,6 +902,12 @@ function testGeneric() {
   const be = (x, y) => ({ tile: { block: "测试A-星河桥", x, y, rot: 0, config_type: "null", config: null }, size: 1, px: x * TILE, py: 0 });
   check("合成：range 内两桥配对", bridgePairs([be(0, 0), be(6, 0)]).length === 1, `pairs=${bridgePairs([be(0, 0), be(6, 0)]).length}`);
   check("合成：range 外不配对", bridgePairs([be(0, 0), be(10, 0)]).length === 0, `pairs=${bridgePairs([be(0, 0), be(10, 0)]).length}`);
+
+  // 原版桥名回归：phase-conveyor / bridge-conveyor 必须在 BRIDGE_BLOCKS 中（曾被遗漏 → 无连接贴图）
+  const vb = (block, x, y, dx, dy) => ({ tile: { block, x, y, rot: 0, config_type: "point2", config: [dx, dy] }, size: 1, px: x * TILE, py: y * TILE });
+  check("原版 phase-conveyor 配对", bridgePairs([vb("phase-conveyor", 0, 0, 0, 2), vb("phase-conveyor", 0, 2, 0, -2)]).length === 1);
+  check("原版 bridge-conveyor 配对", bridgePairs([vb("bridge-conveyor", 0, 0, 0, 3), vb("bridge-conveyor", 0, 3, 0, -3)]).length === 1);
+  check("原版 phase-conduit 配对", bridgePairs([vb("phase-conduit", 0, 0, 0, 8), vb("phase-conduit", 0, 8, 0, -8)]).length === 1);
   setModBridges(new Map());
 
   // 注册节点参数
