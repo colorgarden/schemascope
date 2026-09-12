@@ -851,6 +851,47 @@ async function testMods() {
       check("索引含 factory-out-3/5/7/9", ["factory-out-3", "factory-out-5", "factory-out-7", "factory-out-9"].every((k) => !!idxF.blocks[k]));
     }
 
+    // ---- 重构工厂（Reconstructor）：输入/输出两个开口 + 本体不旋转 ----
+    {
+      const S = 3 * TILE;
+      const mkT = () => {
+        const rgba = new Uint8ClampedArray(S * S * 4);
+        for (let i = 0; i < S * S; i++) {
+          rgba[i * 4] = 10; rgba[i * 4 + 1] = 10; rgba[i * 4 + 2] = 10; rgba[i * 4 + 3] = 255;
+        }
+        return rgba;
+      };
+      const base = { w: S, h: S, size: 3, rgba: mkT(), placeholder: false };
+      for (let y = 2; y < 12; y++) {
+        for (let x = S / 2 - 6; x < S / 2 + 6; x++) {
+          const o = (y * S + x) * 4;
+          base.rgba[o] = 255; base.rgba[o + 1] = 255; base.rgba[o + 2] = 255;
+        }
+      }
+      const mkOverlay = (side) => {
+        const rgba = new Uint8ClampedArray(S * S * 4);
+        for (let i = 0; i < S * S; i++) rgba[i * 4 + 3] = 0;
+        for (let t2 = 0; t2 < 10; t2++) {
+          for (let c2 = S / 2 - 6; c2 < S / 2 + 6; c2++) {
+            const x = side === "left" ? 2 + t2 : S - 12 + t2;
+            const o = (c2 * S + x) * 4;
+            rgba[o] = 255; rgba[o + 1] = 255; rgba[o + 2] = 255; rgba[o + 3] = 255;
+          }
+        }
+        return { w: S, h: S, size: 3, rgba, placeholder: false };
+      };
+      const sprites = { "additive-reconstructor": base, "factory-in-3": mkOverlay("left"), "factory-out-3": mkOverlay("right") };
+      const mkS = (rot) => ({ width: 3, height: 3, tiles: [{ block: "additive-reconstructor", x: 0, y: 0, rot, config_type: "null", config: null }] });
+      const r0 = renderSchematic(mkS(0), sprites, { scale: 1, pad: 0, transparent: true, grid: false });
+      const r1 = renderSchematic(mkS(1), sprites, { scale: 1, pad: 0, transparent: true, grid: false });
+      const px = (img, x, y) => img.rgba[(y * S + x) * 4];
+      check("重构工厂 rot0：输入(左)+输出(右) 两开口", px(r0, 6, S / 2) > 200 && px(r0, S - 6, S / 2) > 200, `${px(r0, 6, S / 2)}/${px(r0, S - 6, S / 2)}`);
+      check("重构工厂：本体不旋转（rot1 顶部白条仍在顶部）", px(r1, S / 2, 6) > 200, String(px(r1, S / 2, 6)));
+      check("重构工厂：输入开口随旋转（rot1 左→下）", px(r1, S / 2, S - 6) > 200, String(px(r1, S / 2, S - 6)));
+      const idxR = JSON.parse(fs.readFileSync(new URL("../sprite_index.json", import.meta.url), "utf8"));
+      check("索引含 factory-in-3/5/7/9", ["factory-in-3", "factory-in-5", "factory-in-7", "factory-in-9"].every((k) => !!idxR.blocks[k]));
+    }
+
     // ---- 模组电力节点（type=PowerNode）----
     const node1 = m.blocks.get("饱和火力-裂位节点");
     const node2 = m.blocks.get("饱和火力-装甲节点");

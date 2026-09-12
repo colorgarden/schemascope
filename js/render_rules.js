@@ -25,8 +25,8 @@
 // 从而保持既有校验效果。
 // =============================================================================
 
-import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260913h";
-import { VANILLA_TURRETS } from "./vanilla_turrets.js?v=20260913h";
+import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260913i";
+import { VANILLA_TURRETS } from "./vanilla_turrets.js?v=20260913i";
 
 /** 仅取自有属性，避免方块名（如 "constructor"）撞上 Object.prototype 上的同名属性。 */
 function own(obj, key) {
@@ -422,6 +422,29 @@ export function isFactoryBlock(blockName, def) {
 export function factorySpriteNames(blockName, size) {
   const s = Number(size) > 0 ? Number(size) : 3;
   return [blockName, blockName + "-out", "factory-out-" + s, blockName + "-top", "factory-top-" + s];
+}
+
+// 单位重构工厂（Reconstructor）：本体不转 + 输入/输出两个开口 + top。
+// 官方来源：Reconstructor.draw()（region 不转 → inRegion@rotation*90（fallback）→ outRegion@rotdeg() → topRegion）。
+export const RECONSTRUCTOR_TYPES = new Set(["Reconstructor"]);
+
+/** 该方块是否为重构工厂类。 */
+export function isReconstructorBlock(blockName, def) {
+  return RECONSTRUCTOR_TYPES.has(typeOfBlock(blockName, def));
+}
+
+/** 重构工厂类需绘制的贴图名（in/out 均支持 per-block → 共享 factory-*-size）。 */
+export function reconstructorSpriteNames(blockName, size) {
+  const s = Number(size) > 0 ? Number(size) : 3;
+  return [
+    blockName,
+    blockName + "-in",
+    "factory-in-" + s,
+    blockName + "-out",
+    "factory-out-" + s,
+    blockName + "-top",
+    "factory-top-" + s,
+  ];
 }
 
 // 从 VANILLA_BLOCKS 归纳「类名 -> 代表属性」，供模组方块（无内置 flags）按类型回退。

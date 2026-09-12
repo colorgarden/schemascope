@@ -22,7 +22,7 @@ import {
   BRIDGE_WIDTH,
   BRIDGE_OPACITY,
   TEAM_PALETTE,
-} from "./data.js?v=20260913h";
+} from "./data.js?v=20260913i";
 import {
   vanillaRule,
   rangeOfBlock,
@@ -34,14 +34,15 @@ import {
   isAutotilerBlock,
   isTurretBlock,
   isFactoryBlock,
+  isReconstructorBlock,
   factorySpriteNames,
   turretInfo,
   turretFallbackBaseName,
   typeOfBlock,
   sizeOfBlock,
   baseOf,
-} from "./render_rules.js?v=20260913h";
-import { makeTileWorld, buildBlending } from "./blending.js?v=20260913h";
+} from "./render_rules.js?v=20260913i";
+import { makeTileWorld, buildBlending } from "./blending.js?v=20260913i";
 
 /** 仅取自有属性，避免方块名（如 "constructor"）撞上 Object.prototype 上的同名属性。 */
 function own(obj, key) {
@@ -892,6 +893,11 @@ function drawBlockSpriteLayers(buf, cw, ch, t, e, sprites, layers, world) {
     drawTurretLayers(buf, cw, ch, t, e, sprites, cx, cy);
     return;
   }
+  // 单位重构工厂（Reconstructor）：本体不转 + 输入/输出两个开口 + top
+  if (layers && isReconstructorBlock(t.block, MOD_DEFS.get(t.block))) {
+    drawReconstructorLayers(buf, cw, ch, t, e, sprites, cx, cy);
+    return;
+  }
   // 单位工厂（PayloadBlock）：本体不旋转 + 开口/箭头 outRegion 随旋转 + top
   if (layers && isFactoryBlock(t.block, MOD_DEFS.get(t.block))) {
     drawFactoryLayers(buf, cw, ch, t, e, sprites, cx, cy);
@@ -1011,6 +1017,25 @@ export function drawNodeLaser(buf, cw, ch, x1, y1, size1, x2, y2, size2, sprites
     blitRotated(buf, cw, ch, end.rgba, end.w, end.h, e1x, e1y, capScale, ang + 180, color, alphaScale);
     blitRotated(buf, cw, ch, end.rgba, end.w, end.h, e2x, e2y, capScale, ang, color, alphaScale);
   }
+}
+
+/** 单位重构工厂（Reconstructor）：本体不转，输入/输出开口按旋转绘制，top 最后。
+ *  官方 Reconstructor.draw()：region（不转）→ inRegion@rotation*90（无邻居时的 fallback）
+ *  → outRegion@rotdeg() → topRegion（不转）。邻居 payload 输入判定暂以 fallback 近似（TODO）。 */
+function drawReconstructorLayers(buf, cw, ch, t, e, sprites, cx, cy) {
+  const paint = (sp, rot) => {
+    const [rw, rh, rrgba] = rot ? rotateSprite(sp.rgba, sp.w, sp.h, rot) : [sp.w, sp.h, sp.rgba];
+    blend(buf, cw, ch, cx - Math.floor(rw / 2), cy - Math.floor(rh / 2), rrgba, rw, rh);
+  };
+  const size = e.size;
+  const base = getSprite(sprites, t.block, false);
+  if (base) paint(base, 0);
+  const inSp = getSprite(sprites, t.block + "-in", true) || getSprite(sprites, "factory-in-" + size, true);
+  if (inSp) paint(inSp, t.rot);
+  const outSp = getSprite(sprites, t.block + "-out", true) || getSprite(sprites, "factory-out-" + size, true);
+  if (outSp) paint(outSp, t.rot);
+  const topSp = getSprite(sprites, t.block + "-top", true) || getSprite(sprites, "factory-top-" + size, true);
+  if (topSp) paint(topSp, 0);
 }
 
 /** 单位工厂（PayloadBlock）：本体不旋转，开口/箭头 outRegion 随方块旋转。
