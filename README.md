@@ -10,6 +10,9 @@ canvas 渲染（多层贴图、描边、电力激光、桥连接、原版背景�
 - 所有资源均为**相对路径**，部署在子路径（如 `https://用户名.github.io/仓库名/`）也能正常工作。
 
 > **声明**：本项目由 **AI 生成**（AI 辅助设计与编写），仅供学习与个人使用。
+> **许可**：本仓库代码为 MIT。Mindustry 的原版贴图与图标字体（GPL-3.0）**不随本仓库分发**，
+> 均由页面在**运行时**从官方仓库 `Anuken/Mindustry` 拉取（镜像/CDN）；可选的
+> `assets/sprites/` 自托管贴图由使用者自行提供。
 
 ## 目录结构
 
@@ -33,10 +36,9 @@ js/history.js         本地历史记录（容量策略纯函数，可单测）
 js/requirements.js    蓝图总耗材计算（可单测）
 js/requirements_data.js 方块耗材表 BLOCK_REQUIREMENTS + 物品中文名 ITEM_CN
 js/main.js            入口 UI 逻辑（入口带 ?v=<VER> 查询做缓存穿透）
-assets/fonts/icon.ttf UI emoji 字体（MindustryIcons）
-assets/icons/*.png    从官方 assets.jar 导出的 530 个原版 PUA 图标
 sprite_index.json     贴图名 → 相对路径索引（blocks/items/aux/all）
 test/parse_test.mjs   Node 一致性测试 + 渲染器/PUA 单测
+tools/gen_vanilla_blocks.py 从官方 Blocks.java 生成 js/vanilla_blocks.js（开发侧）
 package.json          {"type":"module"}
 ```
 
@@ -119,18 +121,19 @@ package.json          {"type":"module"}
      依次尝试 `base` 及其去前缀（`block-`/`unit-`/`item-`/`status-`/`team-`）形式，
      在 `sprite_index.json` 的 `all`/`blocks`/`items` 中查路径。
    - 例：`63528` → `water` / `liquid-water` → `sprites/items/liquid-water.png`。
-2. **UI emoji**（fontgen 那批，如左右箭头）：在静态字体
-   `assets/fonts/icon.ttf`（U+E800–U+F308，137 个字形）里，由 CSS
-   `@font-face { font-family:"MindustryIcons" }` 渲染，并挂在正文/代码等
-   font-family 回退链末尾。
+2. **UI emoji**（fontgen 那批，如左右箭头）：在官方图标字体 `icon.ttf`
+   （U+E800–U+F308）里。**字体不随本仓库分发**（GPL 资源）：页面启动时经镜像从官方
+   仓库拉取 `core/assets/fonts/icon.ttf`，用 `FontFace` 注册为 `MindustryIcons`
+   并挂在正文/代码等 font-family 回退链末尾；拉取失败自动降级。
 
 展示游戏原文的 HTML 上下文（信息板弹窗、信息板 tooltip、处理器代码弹窗、
 蓝图标签 `tags.labels`）统一经 `richText()` 渲染；`<img>` 加载失败会回退。
 原生 `title` 等纯文本上下文用 `plainTextWithIcons()`：内容图标 → `[官方中文名]`，
 UI emoji → 去掉。
 
-> 素材均来自 Mindustry 仓库 / 发布包：`core/assets/icons/icons.properties`
-> 与 `core/assets/fonts/icon.ttf`（此处置于 `assets/fonts/`）。
+> 素材均来自 Mindustry 官方仓库（Anuken/Mindustry，GPL-3.0）：`icons.properties`
+> 仅以内联数据形式使用（`js/icons_data.js`），贴图与字体均在**运行时**拉取，
+> 不随本仓库分发。
 
 ## 五、图标与耗材数据
 
@@ -138,11 +141,10 @@ UI emoji → 去掉。
   （`CN_BLOCKS` 412 条 / `CN_ITEMS` 22 条 / `CN_LIQUIDS` 11 条）。`js/data.js` 的
   `BLOCK_CN`/`CONTENT_CN` 以之为准（旧手写小表仅用于补缺，不覆盖官方名），因此
   `overflow-gate`→溢流门、`underflow-gate`→反向溢流门、`duct` 等均有正确中文名。
-- **原版图标 `assets/icons/<码点>.png`**：从官方 `assets.jar` 导出 530 个 PUA 内容图标，
-  补齐构建期合成的 `-ui` 区域（如 smite / renale / metal-tiles-13 等仓库中无源文件的图标）。
-  `js/icons_data.js` 的 `ICON_LOCAL_CODES` 记录这些码点；`richText` 对命中码点优先使用
-  本地 `assets/icons/<码点>.png`（离线可用），并把原贴图 CDN 地址写入 `data-fb` 作为
-  `onerror` 兜底；未命中的码点仍走 `resolveIcon` 的 raw-sprite 解析（`assets/sprites` 或 CDN）。
+- **运行时图标**：内容图标的贴图由 `resolveIcon` 解析后直接使用官方原贴图 URL
+  （本地 `assets/sprites/` 自托管优先，否则 CDN 镜像）；`js/icons_data.js` 的
+  `ICON_BY_CODE`（626 条）为纯数据表。**不再随仓库导出/分发图标 PNG**（原导出自
+  GPL 资源，与 MIT 不兼容）。
 - **耗材 `js/requirements_data.js`**：`BLOCK_REQUIREMENTS`（231 个方块）来自 Mindustry
   `Blocks.java` 的 `requirements(...)`，与游戏 `Schematic.requirements()` 一致
   （把每个方块的 requirements 直接累加，无倍率）；`ITEM_CN` 为官方中文名。

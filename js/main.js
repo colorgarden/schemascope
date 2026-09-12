@@ -10,22 +10,22 @@ import {
   AUX_PATHS,
   DEFAULT_SCALE,
   DEFAULT_PAD,
-} from "./data.js?v=20260913d";
-import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913d";
-import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913d";
-import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock } from "./render_rules.js?v=20260913d";
-import { setIconIndex, richText, plainTextWithIcons, itemIconSrc } from "./icons.js?v=20260913d";
-import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913d";
-import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913d";
-import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913d";
-import { requirementsList } from "./requirements.js?v=20260913d";
-import { BLOCK_REQUIREMENTS } from "./requirements_data.js?v=20260913d";
-import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913d";
-import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913d";
-import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913d";
+} from "./data.js?v=20260913e";
+import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913e";
+import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913e";
+import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock } from "./render_rules.js?v=20260913e";
+import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260913e";
+import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913e";
+import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913e";
+import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913e";
+import { requirementsList } from "./requirements.js?v=20260913e";
+import { BLOCK_REQUIREMENTS } from "./requirements_data.js?v=20260913e";
+import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913e";
+import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913e";
+import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913e";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260913d";
+const APP_VERSION = "20260913e";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -457,6 +457,63 @@ async function modItemSprite(ref) {
     if (b) return b;
   }
   return null;
+}
+
+/**
+ * 运行时从官方仓库加载图标字体（GPL 资源不随仓库分发），注册为 "MindustryIcons"。
+ * 失败不影响功能（PUA UI 字符会缺少字形）。
+ */
+async function loadIconFont() {
+  try {
+    if (typeof FontFace === "undefined" || !document.fonts) return;
+    const resp = await fetchMindustryCached("core/assets/fonts/icon.ttf");
+    if (!resp || !resp.ok) return;
+    const buf = await resp.arrayBuffer();
+    const ff = new FontFace("MindustryIcons", buf);
+    await ff.load();
+    document.fonts.add(ff);
+  } catch (e) {
+    // 忽略：无字体时降级展示
+  }
+}
+
+// ---- 图标 <img> 的前端缓存：经 Cache Storage 命中后换 blob URL，失败保持 CDN 直连 ----
+const iconBlobUrls = new Map();
+
+async function hydrateIconImg(img) {
+  const path = img.dataset && img.dataset.iconPath;
+  if (!path || img.dataset.cached === "1") return;
+  img.dataset.cached = "1";
+  try {
+    let url = iconBlobUrls.get(path);
+    if (!url) {
+      const resp = await fetchMindustryCached(iconCacheRelPath(path));
+      if (!resp || !resp.ok) {
+        img.dataset.cached = "";
+        return;
+      }
+      url = URL.createObjectURL(await resp.blob());
+      iconBlobUrls.set(path, url);
+    }
+    img.src = url;
+  } catch (e) {
+    img.dataset.cached = "";
+  }
+}
+
+/** 观察 DOM 中新增的图标 <img>（信息板/耗材/标签等），统一走前端缓存。 */
+function installIconCacheObserver() {
+  const scan = (node) => {
+    if (!node || node.nodeType !== 1) return;
+    if (node.matches && node.matches("img.msch-icon[data-icon-path]")) hydrateIconImg(node);
+    if (node.querySelectorAll) node.querySelectorAll("img.msch-icon[data-icon-path]").forEach((el) => hydrateIconImg(el));
+  };
+  scan(document.body);
+  if (typeof MutationObserver === "function") {
+    new MutationObserver((muts) => {
+      for (const m of muts) for (const n of m.addedNodes) scan(n);
+    }).observe(document.body, { childList: true, subtree: true });
+  }
 }
 
 /**
@@ -990,6 +1047,8 @@ async function buildRequirements(schem) {
       // 原逻辑：assets/icons 码点图标 → item-<name> 贴图（本地 → 当前镜像源）
       const spriteName = "item-" + item;
       const rel = spriteRelPath(spriteName);
+      const iconPath = itemIconPath(item);
+      if (iconPath) img.dataset.iconPath = iconPath;
       img.src = itemIconSrc(item) || LOCAL_SPRITE_DIR + spriteName + ".png";
       if (rel) {
         const cdn = preferredSource() + rel.base + rel.path;
@@ -1676,6 +1735,8 @@ if (els.clearCache) {
   const footerVer = document.getElementById("footer-ver");
   if (footerVer) footerVer.textContent = "v" + APP_VERSION;
   applyLayoutMode();
+  loadIconFont();
+  installIconCacheObserver();
   await loadSpriteIndex();
   setIconIndex(spriteIndex);
   populateSourceSelect();

@@ -14,12 +14,8 @@
   --danger: #f87171;
 }
 
-/* Mindustry UI emoji 字体（fontgen 生成，U+E800–U+F308 共 137 个字形） */
-@font-face {
-  font-family: "MindustryIcons";
-  src: url("../assets/fonts/icon.ttf") format("truetype");
-  font-display: swap;
-}
+/* Mindustry UI emoji 字体（U+E800–U+F308）运行时由 JS 从官方仓库加载并注册为 "MindustryIcons"，
+   不随本仓库分发（GPL 资源） */
 
 * {
   box-sizing: border-box;

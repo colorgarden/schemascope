@@ -10,14 +10,12 @@
 // 本模块可在 Node 下单测：通过 setIconIndex() 注入 sprite_index.json。
 // =============================================================================
 
-import { CDN_PREFIX, LOCAL_SPRITE_DIR, BLOCK_CN, CONTENT_CN } from "./data.js?v=20260913d";
-import { ICON_BY_CODE, ICON_LOCAL_CODES } from "./icons_data.js?v=20260913d";
+import { CDN_PREFIX, LOCAL_SPRITE_DIR, BLOCK_CN, CONTENT_CN } from "./data.js?v=20260913e";
+import { ICON_BY_CODE } from "./icons_data.js?v=20260913e";
 
 // sprite_index.json 中贴图相对路径的基准前缀
 const SPRITE_BASE = "core/assets-raw/";
-// 从官方 assets.jar 导出的原版图标目录（相对站点根）
-const LOCAL_ICON_DIR = "assets/icons/";
-// icon.ttf 覆盖的 UI emoji 码点范围
+// icon.ttf 覆盖的 UI emoji 码点范围（字体运行时从官方仓库加载，不随本仓库分发）
 export const ICON_FONT_LO = 0xe800;
 export const ICON_FONT_HI = 0xf308;
 
@@ -88,15 +86,28 @@ export const ITEM_ICON_CODE = (() => {
 })();
 
 /**
- * 物品的本地原版图标 URL（与文本内图标同一套 assets/icons/<码点>.png）。
- * @returns {string|null} 如 "assets/icons/63544.png"；无对应图标返回 null（回退贴图）。
+ * 物品的原版图标 URL（运行时从官方仓库拉取；不随本仓库分发）。
+ * @returns {string|null} 如 "https://cdn.jsdelivr.net/gh/Anuken/Mindustry@master/core/assets-raw/sprites/items/item-copper.png"；无对应图标返回 null（回退贴图）。
  */
 export function itemIconSrc(item) {
   const code = ITEM_ICON_CODE.get(item);
-  if (code != null && ICON_LOCAL_CODES && ICON_LOCAL_CODES.has(code)) {
-    return LOCAL_ICON_DIR + code + ".png";
-  }
+  if (code == null) return null;
+  const icon = resolveIcon(code);
+  if (icon && icon.spritePath) return CDN_PREFIX + SPRITE_BASE + icon.spritePath;
   return null;
+}
+
+/** 贴图相对路径（用于 fetchMindustryCached 前端缓存），如 "core/assets-raw/sprites/items/item-copper.png"。 */
+export function iconCacheRelPath(spritePath) {
+  return spritePath ? SPRITE_BASE + spritePath : null;
+}
+
+/** 物品图标贴图的相对路径（前端缓存用）；无图标返回 null。 */
+export function itemIconPath(item) {
+  const code = ITEM_ICON_CODE.get(item);
+  if (code == null) return null;
+  const icon = resolveIcon(code);
+  return icon && icon.spritePath ? icon.spritePath : null;
 }
 
 function escapeHtml(s) {
@@ -111,36 +122,16 @@ function iconImg(icon) {
   const label = escapeHtml(iconDisplayName(icon));
   return (
     `<img class="msch-icon" src="${escapeHtml(local)}" data-fb="${escapeHtml(cdn)}"` +
+    ` data-icon-path="${escapeHtml(icon.spritePath)}"` +
     ` alt="${label}" title="${label}" loading="lazy"` +
     ` onerror="this.onerror=null;this.src=this.dataset.fb">`
   );
 }
 
 /**
- * 本地原版图标（assets/icons/<码点>.png）。CDN 原贴图作为 onerror 兜底；
- * 若该码点没有可解析的原贴图，则不带 data-fb，仅在加载失败时停止重试。
- */
-function localIconImg(code) {
-  const icon = resolveIcon(code);
-  const label = icon ? escapeHtml(iconDisplayName(icon)) : "";
-  const local = LOCAL_ICON_DIR + code + ".png";
-  let attrs = "";
-  if (icon && icon.spritePath) {
-    const cdn = CDN_PREFIX + SPRITE_BASE + icon.spritePath;
-    attrs = ` data-fb="${escapeHtml(cdn)}" onerror="this.onerror=null;this.src=this.dataset.fb"`;
-  } else {
-    attrs = ` onerror="this.onerror=null"`;
-  }
-  return (
-    `<img class="msch-icon" src="${local}"${attrs}` +
-    ` alt="${label}" title="${label}" loading="lazy">`
-  );
-}
-
-/**
  * 把文本中的 PUA 内容图标替换为 <img class="msch-icon" src="…">。
- * 首选本地导出的原版图标 assets/icons/<码点>.png；否则退回 raw-sprite 解析（本地/CDN）。
- * 完全解析不到的 PUA 字符保留原样（交给 MindustryIcons 字体）；其余文本做 HTML 转义。
+ * 图标贴图运行时从官方仓库解析（本地 assets/sprites 可选自托管 → CDN）。
+ * 完全解析不到的 PUA 字符保留原样（交给运行时加载的 MindustryIcons 字体）；其余文本做 HTML 转义。
  */
 export function richText(text) {
   const s = String(text == null ? "" : text);
@@ -148,10 +139,6 @@ export function richText(text) {
   for (let i = 0; i < s.length; i++) {
     const code = s.charCodeAt(i);
     if (code >= 0xe000 && code <= 0xf8ff) {
-      if (ICON_LOCAL_CODES.has(code)) {
-        out += localIconImg(code);
-        continue;
-      }
       const icon = resolveIcon(code);
       if (icon && icon.spritePath) {
         out += iconImg(icon);

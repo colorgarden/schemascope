@@ -53,8 +53,8 @@ import {
 import { VANILLA_BLOCKS } from "../js/vanilla_blocks.js";
 import { blockDisplayName, modNameCandidates, spriteDisplayName } from "../js/names.js";
 import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN, CONTENT_COLORS, CONFIG_UNDERLAY, CONFIG_OVERLAY, configSpriteNames, spriteAliasCandidates } from "../js/data.js";
-import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, ICON_FONT_LO } from "../js/icons.js";
-import { ICON_BY_CODE, ICON_LOCAL_CODES } from "../js/icons_data.js";
+import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath, ICON_FONT_LO } from "../js/icons.js";
+import { ICON_BY_CODE } from "../js/icons_data.js";
 import { simpleHash, createPrefetchManager } from "../js/prefetch.js";
 import { computeRequirements, requirementsList } from "../js/requirements.js";
 import { BLOCK_REQUIREMENTS } from "../js/requirements_data.js";
@@ -412,31 +412,30 @@ function testIcons() {
   );
   check("resolveIcon(999999) = null", resolveIcon(999999) === null);
 
-  // richText —— 本地原版图标优先
+  // richText —— 图标贴图运行时从官方仓库拉取（不再随仓库分发 GPL 资源）
+  const CDN = "https://cdn.jsdelivr.net/gh/Anuken/Mindustry@master/";
   const rt = richText(String.fromCharCode(63528));
-  check("richText(63528) 用本地图标", rt.includes('src="assets/icons/63528.png"'), rt);
+  check("richText(63528) 用 CDN 原贴图", rt.includes(`${CDN}core/assets-raw/sprites/items/liquid-water.png`), rt);
   check("richText(63528) 含 img 且 data-fb 指原贴图", rt.includes('class="msch-icon"') && rt.includes("liquid-water"), rt);
   check("richText(63528) 含中文 alt 水", rt.includes('alt="水"'), rt);
-  check("richText(63465) 本地图标", richText(String.fromCharCode(63465)).includes('src="assets/icons/63465.png"'));
-  check("richText(63084) 本地图标", richText(String.fromCharCode(63084)).includes('src="assets/icons/63084.png"'));
+  check("richText(63465) CDN 图标", richText(String.fromCharCode(63465)).includes("core/assets-raw/"));
+  check("richText(63084) CDN 图标", richText(String.fromCharCode(63084)).includes("core/assets-raw/"));
 
-  // 非本地码点：走 raw-sprite 逻辑
-  check("ICON_LOCAL_CODES 共 530 个", ICON_LOCAL_CODES.size === 530, `size=${ICON_LOCAL_CODES.size}`);
-  check("本地图标文件存在", fs.existsSync(path.join(__dirname, "../assets/icons/63528.png")));
+  // 许可证守卫：仓库不得包含 Mindustry 的 GPL 资源（图标/字体随运行时拉取）
+  check("仓库不含 assets/icons、assets/fonts（GPL 资源）", !fs.existsSync(path.join(__dirname, "../assets/icons")) && !fs.existsSync(path.join(__dirname, "../assets/fonts")));
   let rawCode = null;
   for (const code of Object.keys(ICON_BY_CODE)) {
     const c = Number(code);
-    if (ICON_LOCAL_CODES.has(c)) continue;
     const ic = resolveIcon(c);
     if (ic && ic.spritePath) {
       rawCode = c;
       break;
     }
   }
-  check("存在走 raw-sprite 的非本地码点", rawCode !== null, `rawCode=${rawCode}`);
+  check("存在可解析的 PUA 码点", rawCode !== null, `rawCode=${rawCode}`);
   if (rawCode !== null) {
     const rawHtml = richText(String.fromCharCode(rawCode));
-    check(`richText(${rawCode}) 走 raw-sprite`, rawHtml.includes("assets/sprites/") && !rawHtml.includes("assets/icons/"), rawHtml);
+    check(`richText(${rawCode}) 走 CDN 原贴图`, rawHtml.includes("core/assets-raw/") && !rawHtml.includes("assets/icons/"), rawHtml);
   }
 
   const emoji = String.fromCharCode(59394); // 0xE802
@@ -449,20 +448,23 @@ function testIcons() {
   check("plainTextWithIcons(emoji) → 去掉", plainTextWithIcons("A" + emoji + "B") === "AB");
   check("plainTextWithIcons 普通文本原样", plainTextWithIcons("接收台") === "接收台");
 
-  // 集成：示例信息板原文里的 U+F828 应渲染成本地水图标
+  // 集成：示例信息板原文里的 U+F828 应渲染成 CDN 水图标
   const msg = globalThis.__SCHEM.tiles.find((t) => t.block === "message");
   const hasWaterChar = msg && msg.config && msg.config.includes(String.fromCharCode(63528));
   check("示例信息板含 U+F828(水)", !!hasWaterChar);
   if (hasWaterChar) {
     const html = richText(msg.config);
-    check("信息板 richText 含水图标", html.includes("msch-icon") && html.includes("assets/icons/63528.png"));
+    check("信息板 richText 含水图标", html.includes("msch-icon") && html.includes("core/assets-raw/sprites/items/liquid-water.png"));
   }
 
-  // 耗材图标：物品名 → 与文本图标同一套的本地原版图标
-  check("itemIconSrc(copper) = assets/icons/63544.png", itemIconSrc("copper") === "assets/icons/63544.png", String(itemIconSrc("copper")));
-  check("itemIconSrc(titanium) = assets/icons/63538.png", itemIconSrc("titanium") === "assets/icons/63538.png", String(itemIconSrc("titanium")));
-  check("itemIconSrc(surge-alloy) = assets/icons/63532.png", itemIconSrc("surge-alloy") === "assets/icons/63532.png", String(itemIconSrc("surge-alloy")));
+  // 耗材图标：物品名 → 运行时 CDN 原贴图
+  check("itemIconSrc(copper) 指向 item-copper", String(itemIconSrc("copper")).includes("sprites/items/item-copper.png"), String(itemIconSrc("copper")));
+  check("itemIconSrc(titanium) 指向 item-titanium", String(itemIconSrc("titanium")).includes("sprites/items/item-titanium.png"), String(itemIconSrc("titanium")));
+  check("itemIconSrc(surge-alloy) 指向 item-surge-alloy", String(itemIconSrc("surge-alloy")).includes("sprites/items/item-surge-alloy.png"), String(itemIconSrc("surge-alloy")));
   check("itemIconSrc(未知物品) = null", itemIconSrc("not-an-item") === null);
+  check("iconCacheRelPath 拼 core/assets-raw/", iconCacheRelPath("sprites/items/item-copper.png") === "core/assets-raw/sprites/items/item-copper.png", String(iconCacheRelPath("sprites/items/item-copper.png")));
+  check("itemIconPath(copper) 含 item-copper", String(itemIconPath("copper")).includes("sprites/items/item-copper.png"), String(itemIconPath("copper")));
+  check("itemIconPath(未知) = null", itemIconPath("not-an-item") === null);
   check("耗材物品全部有原版图标", ["copper","titanium","graphite","lead","metaglass","silicon","thorium"].every((it) => itemIconSrc(it)), "缺: " + ["copper","titanium","graphite","lead","metaglass","silicon","thorium"].filter((it) => !itemIconSrc(it)));
 }
 
