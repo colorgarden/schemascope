@@ -10,22 +10,23 @@ import {
   AUX_PATHS,
   DEFAULT_SCALE,
   DEFAULT_PAD,
-} from "./data.js?v=20260913j";
-import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913j";
-import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913j";
-import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock, isAutotilerBlock, isTurretBlock, isFactoryBlock, isReconstructorBlock, factorySpriteNames, reconstructorSpriteNames, sizeOfBlock, turretSpriteNames, autotilerSpriteNames, selectMissingSprites } from "./render_rules.js?v=20260913j";
-import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260913j";
-import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913j";
-import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913j";
-import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913j";
-import { requirementsList } from "./requirements.js?v=20260913j";
-import { BLOCK_REQUIREMENTS } from "./requirements_data.js?v=20260913j";
-import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913j";
-import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913j";
-import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913j";
+} from "./data.js?v=20260913k";
+import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913k";
+import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913k";
+import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock, isAutotilerBlock, isTurretBlock, isFactoryBlock, isReconstructorBlock, factorySpriteNames, reconstructorSpriteNames, sizeOfBlock, turretSpriteNames, autotilerSpriteNames, selectMissingSprites } from "./render_rules.js?v=20260913k";
+import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260913k";
+import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913k";
+import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913k";
+import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913k";
+import { requirementsList, computePower, autoFixed } from "./requirements.js?v=20260913k";
+import { BLOCK_REQUIREMENTS } from "./requirements_data.js?v=20260913k";
+import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260913k";
+import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913k";
+import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913k";
+import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913k";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260913j";
+const APP_VERSION = "20260913k";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -105,6 +106,7 @@ let modDefs = new Map(); // 方块名（内部名/base）-> 模组方块定义�
 let modBridgeNames = new Set(); // 模组桥方块名（内部名与 base）
 let modBlockSizes = new Map(); // 方块名（内部名/base）-> size
 let modRequirementsTable = {}; // 方块名 -> requirements
+let modPowerTable = {}; // 方块名 -> { powerProduction, powerUsage }
 let modBundle = new Map(); // bundle key -> value（合并所有模组）
 let modItemNames = new Map(); // 模组物品内部名 -> 显示名（配置提示用）
 
@@ -269,6 +271,7 @@ function rebuildModDerived() {
   modNormalIndex = new Map();
   modBlockSizes = new Map();
   modRequirementsTable = {};
+  modPowerTable = {};
   modBundle = new Map();
   modLayersMap = {};
   modDefs = new Map();
@@ -288,6 +291,10 @@ function rebuildModDerived() {
     for (const [key, def] of m.blocks) {
       modBlockSizes.set(key, def.size);
       modRequirementsTable[key] = def.requirements;
+      modPowerTable[key] = {
+        powerProduction: def.powerProduction || 0,
+        powerUsage: def.powerUsage || 0,
+      };
       modDefs.set(key, def);
 
       // 桥：type 以 Bridge 结尾（ItemBridge/LiquidBridge/…）
@@ -1056,7 +1063,13 @@ function buildLegend(schem) {
 async function buildRequirements(schem) {
   const table = Object.assign({}, BLOCK_REQUIREMENTS, modRequirementsTable);
   const list = requirementsList(schem.tiles, table, modItemName);
-  if (!list.length) {
+  // 电力收支（每刻 → ×60 得到官方面板显示的功率）
+  const powerTable = Object.assign({}, VANILLA_BLOCKS, modPowerTable);
+  const { production, consumption } = computePower(schem.tiles, powerTable);
+  const prod = production * 60;
+  const cons = consumption * 60;
+  const showPower = Math.abs(prod) > 1e-6 || Math.abs(cons) > 1e-6;
+  if (!list.length && !showPower) {
     els.reqWrap.style.display = "none";
     els.requirements.replaceChildren();
     return;
@@ -1104,6 +1117,27 @@ async function buildRequirements(schem) {
     div.append(img, nameEl, countEl);
     frag.appendChild(div);
   }
+
+  // 电力收支行（官方 SchematicsDialog 792-826：prod 用 powerLight 带 +，
+  // cons 用 remove 带 -，数字 autoFixed(x, 2)，非零才显示）
+  if (showPower) {
+    const row = document.createElement("div");
+    row.className = "req-power";
+    if (Math.abs(prod) > 1e-6) {
+      const p = document.createElement("span");
+      p.className = "req-power-prod";
+      p.textContent = "⚡ +" + autoFixed(prod, 2);
+      row.appendChild(p);
+    }
+    if (Math.abs(cons) > 1e-6) {
+      const c = document.createElement("span");
+      c.className = "req-power-cons";
+      c.textContent = "⚡ -" + autoFixed(cons, 2);
+      row.appendChild(c);
+    }
+    frag.appendChild(row);
+  }
+
   els.requirements.replaceChildren(frag);
 }
 

@@ -119,6 +119,39 @@ def parse_blocks(src: str) -> dict:
                 entry["range"] = int(r) if r == int(r) else r
             except ValueError:
                 pass
+        # ---- 电力（Schematic.powerProduction() / powerConsumption()） ----
+        # powerProduction：PowerGenerator 家族每刻发电量（缺省 0）。存「显示值」：
+        # ThermalGenerator.getDisplayedPowerProduction() 会除以 displayEfficiencyScale
+        # （如 turbine-condenser = (3/9) / (1/9) = 3），与官方面板一致。
+        prod = 0.0
+        pm = re.search(r'\bpowerProduction\s*=\s*([^;]+);', body)
+        if pm:
+            v = eval_number(pm.group(1), {})
+            if v is not None:
+                prod = v
+        if cls == "ThermalGenerator":
+            dm = re.search(r'\bdisplayEfficiencyScale\s*=\s*([^;]+);', body)
+            scale = eval_number(dm.group(1), {}) if dm else 1.0
+            if scale:
+                prod = prod / scale
+        if prod:
+            entry["powerProduction"] = prod
+        # powerUsage：consumePower(X) / consPower = new ConsumePower(X, ...) 的 usage
+        # （每刻耗电）。consumePowerBuffered 的 usage=0，不计。
+        use = 0.0
+        um = re.search(r'\bconsumePower\s*\(\s*([^,);]+)', body)
+        if um:
+            v = eval_number(um.group(1), {})
+            if v is not None:
+                use = v
+        else:
+            cm = re.search(r'\bconsPower\s*=\s*new\s+ConsumePower\s*\(\s*([^,);]+)', body)
+            if cm:
+                v = eval_number(cm.group(1), {})
+                if v is not None:
+                    use = v
+        if use:
+            entry["powerUsage"] = use
         # ---- 属性解析 ----
         tf = TYPE_FLAGS.get(cls, {})
         ex = parse_explicit_flags(body)
@@ -398,6 +431,9 @@ HEAD_BLOCKS = '''// ============================================================
 //   python3 tools/gen_vanilla_blocks.py <Blocks.java>
 //
 // 字段：方块内部名 -> { type: 官方 Java 类名, size: 占地, range?: 连接范围,
+//   powerProduction?: 每刻发电（PowerGenerator.getDisplayedPowerProduction()，
+//     缺省 0；storage 值=原始值，ThermalGenerator 已按 displayEfficiencyScale 折算）,
+//   powerUsage?: 每刻耗电（consumePower 的 consPower.usage，缺省 0）,
 //   flags?: { hasItems/hasLiquids/outputsLiquid/outputsItems/squareSprite/rotate/
 //             rotateDraw/isDuct/armored } }。flags 仅记录与类默认不同的值
 //   （squareSprite/rotateDraw 仅记 false，其余仅记 true）。类型是 render_rules.js
@@ -424,6 +460,10 @@ def emit_blocks(blocks: dict, path: Path):
         parts = ['type: "%s"' % e["type"], "size: %d" % e["size"]]
         if "range" in e:
             parts.append("range: %s" % e["range"])
+        if "powerProduction" in e:
+            parts.append("powerProduction: %s" % js_value(e["powerProduction"]))
+        if "powerUsage" in e:
+            parts.append("powerUsage: %s" % js_value(e["powerUsage"]))
         if e.get("flags"):
             fl = ", ".join("%s: %s" % (k, js_value(v)) for k, v in e["flags"].items())
             parts.append("flags: { %s }" % fl)

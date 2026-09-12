@@ -590,6 +590,28 @@ h1 .sub {
   white-space: nowrap;
 }
 
+/* 电力收支行：横跨整行；颜色对应官方 Pal.powerLight / Pal.remove */
+.req-power {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 6px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.req-power-prod {
+  color: #fbd367;
+}
+
+.req-power-cons {
+  color: #e55454;
+}
+
 @media (max-width: 560px) {
   .requirements {
     grid-template-columns: repeat(2, minmax(0, 1fr));

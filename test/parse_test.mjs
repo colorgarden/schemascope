@@ -67,7 +67,7 @@ import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN, CONTENT_COLORS, CONFIG_UNDERLAY
 import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath, ICON_FONT_LO } from "../js/icons.js";
 import { ICON_BY_CODE } from "../js/icons_data.js";
 import { simpleHash, createPrefetchManager } from "../js/prefetch.js";
-import { computeRequirements, requirementsList } from "../js/requirements.js";
+import { computeRequirements, requirementsList, computePower, autoFixed } from "../js/requirements.js";
 import { BLOCK_REQUIREMENTS } from "../js/requirements_data.js";
 import { openZip } from "../js/zip.js";
 import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers, looseJson, parseRequirements, parseHexColor } from "../js/mod.js";
@@ -567,6 +567,85 @@ function testRequirements() {
 }
 
 // -----------------------------------------------------------------------------
+// 5.1 电力收支（Schematic.powerProduction/powerConsumption）测试
+// -----------------------------------------------------------------------------
+function testPower() {
+  console.log("== 电力收支测试 ==");
+
+  // (a) 生成器抽样：发电量 = PowerGenerator.getDisplayedPowerProduction()（每刻）
+  const prodCases = [
+    ["combustion-generator", 1],
+    ["steam-generator", 5.5],
+    ["differential-generator", 18],
+    ["thermal-generator", 1.8],
+    ["turbine-condenser", 3], // (3/9) / (1/9)，已按 displayEfficiencyScale 折算
+    ["rtg-generator", 4.5],
+    ["thorium-reactor", 15],
+    ["impact-reactor", 130],
+    ["solar-panel", 0.12],
+    ["solar-panel-large", 1.6],
+    ["flux-reactor", 300], // 18000 / 60
+    ["neoplasia-reactor", 140],
+  ];
+  for (const [b, v] of prodCases) {
+    const got = Number(VANILLA_BLOCKS[b] && VANILLA_BLOCKS[b].powerProduction) || 0;
+    check(`powerProduction ${b} = ${v}`, Math.abs(got - v) < 1e-6, `got=${got}`);
+  }
+
+  // (a2) 耗电量抽样：consumePower(X) → consPower.usage = X
+  const useCases = [
+    ["kiln", 0.6],
+    ["silicon-smelter", 0.5],
+    ["impact-reactor", 25],
+    ["mend-projector", 1.5],
+    ["force-projector", 4],
+    ["overdrive-projector", 3.5],
+  ];
+  for (const [b, v] of useCases) {
+    const got = Number(VANILLA_BLOCKS[b] && VANILLA_BLOCKS[b].powerUsage) || 0;
+    check(`powerUsage ${b} = ${v}`, Math.abs(got - v) < 1e-6, `got=${got}`);
+  }
+
+  // (a3) 无电力方块为 0
+  for (const b of ["router", "conveyor", "graphite-press", "sorter"]) {
+    check(
+      `无电力 ${b}`,
+      !Number(VANILLA_BLOCKS[b].powerProduction || 0) && !Number(VANILLA_BLOCKS[b].powerUsage || 0)
+    );
+  }
+
+  // (b) computePower 合成样例：一个发电机 + 一个耗电方块
+  const p = computePower([{ block: "combustion-generator" }, { block: "kiln" }]);
+  check("computePower production=1", p.production === 1, JSON.stringify(p));
+  check("computePower consumption=0.6", Math.abs(p.consumption - 0.6) < 1e-9, JSON.stringify(p));
+  // 与官方显示一致（×60）
+  check("computePower 1×60 → 60", autoFixed(p.production * 60, 2) === "60");
+  check("computePower 0.6×60 → 36", autoFixed(p.consumption * 60, 2) === "36");
+
+  const p2 = computePower([{ block: "steam-generator" }, { block: "thermal-generator" }]);
+  check("computePower steam+thermal prod=7.3", Math.abs(p2.production - 7.3) < 1e-9, JSON.stringify(p2));
+  check("computePower 7.3×60 → 438", autoFixed(p2.production * 60, 2) === "438");
+
+  // 缺失/未知方块跳过
+  const p3 = computePower([{ block: "not-a-block" }, { block: "kiln" }]);
+  check("computePower 跳过未知方块", p3.production === 0 && Math.abs(p3.consumption - 0.6) < 1e-9, JSON.stringify(p3));
+
+  // 模组独立电力表
+  const modTable = { "模组-反应堆": { powerProduction: 2, powerUsage: 0.25 } };
+  const pm = computePower([{ block: "模组-反应堆" }], modTable);
+  check("computePower 模组表", pm.production === 2 && pm.consumption === 0.25, JSON.stringify(pm));
+
+  // (c) autoFixed（官方 arc.util.Strings.autoFixed(x, 2)：两位小数去尾零）
+  check("autoFixed 0.5*60=30 → 30", autoFixed(0.5 * 60, 2) === "30");
+  check("autoFixed 1.8*60=108 → 108", autoFixed(1.8 * 60, 2) === "108");
+  check("autoFixed 0.12*60=7.2 → 7.2", autoFixed(0.12 * 60, 2) === "7.2");
+  check("autoFixed 3.5*60=210 → 210", autoFixed(3.5 * 60, 2) === "210");
+  check("autoFixed 550/60*60=550 → 550", autoFixed((550 / 60) * 60, 2) === "550");
+  check("autoFixed 0 → 0", autoFixed(0, 2) === "0");
+  check("autoFixed 1.10 → 1.1", autoFixed(1.1, 2) === "1.1");
+}
+
+// -----------------------------------------------------------------------------
 // 6. 模组支持（zip 读取 / 解析 / 需求 / 纯逻辑）
 // -----------------------------------------------------------------------------
 const MOD_DIR = "/data/data/com.termux/files/usr/tmp/opencode";
@@ -660,6 +739,21 @@ async function testMods() {
         JSON.stringify(pump.requirements)
       );
     }
+    // 模组电力：powerProduction 与 consumes.power
+    const reactor = m.blocks.get("无限-火力反应堆");
+    check("67科技 火力反应堆 powerProduction=14", !!reactor && reactor.powerProduction === 14, reactor && String(reactor.powerProduction));
+    check("67科技 便携式抽水机 powerUsage=0.5", !!pump && pump.powerUsage === 0.5, pump && String(pump.powerUsage));
+    check(
+      "67科技 所有方块 power 字段均为数字",
+      [...m.blocks.values()].every((d) => !Number.isNaN(d.powerProduction) && !Number.isNaN(d.powerUsage))
+    );
+    // 模组电力表接入 computePower
+    const modPower = Object.fromEntries(
+      [...m.blocks.entries()].map(([k, d]) => [k, { powerProduction: d.powerProduction || 0, powerUsage: d.powerUsage || 0 }])
+    );
+    // 火力反应堆：prod 14，cons 0.1；便携式抽水机：cons 0.5 → 合计 prod 14 / cons 0.6
+    const pc67 = computePower([{ block: "无限-火力反应堆" }, { block: "无限-便携式抽水机" }], modPower);
+    check("67科技 computePower 模组 = 14 / 0.6", pc67.production === 14 && Math.abs(pc67.consumption - 0.6) < 1e-9, JSON.stringify(pc67));
     // 显示名：67科技无 bundle → 回退 JSON name
     check(
       "显示名 67：无 bundle 回退 JSON name",
@@ -2411,6 +2505,7 @@ async function main() {
   testIcons();
   await testPrefetch();
   testRequirements();
+  testPower();
   await testMods();
   testGeneric();
   testCnAndFrames();

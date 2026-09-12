@@ -10,7 +10,7 @@
 // 纯逻辑，可在 Node 下单测。
 // =============================================================================
 
-import { openZip } from "./zip.js?v=20260913j";
+import { openZip } from "./zip.js?v=20260913k";
 
 /** 去掉 // 与 /* *\/ 注释（字符串感知），便于宽松解析模组 JSON。 */
 export function stripJsonComments(src) {
@@ -322,6 +322,7 @@ function makeLazySpriteMap(zip, entriesMap, stats, fallbackMaps = []) {
  * @returns {Promise<{name,displayName,blocks:Map,sprites,spritesOverride,bundle:Map,fileName,spriteStats}>}
  *   blocks: Map(内部名/base → {base,size,name,requirements,type,range,bridgeWidth,
  *            hasPower,outlineIcon,outlineColor,outlineRadius,rotate,consumesPower,
+ *            powerProduction,powerUsage,
  *            laserRange,laserScale,laserColor1,laserColor2,maxNodes})
  *   sprites: 懒解压贴图表（basename 索引，sprites-override 已覆盖）；
  *            `size`/`has`/`keys` 为条目数，`get(name)` 按需解压返回 Blob
@@ -373,6 +374,15 @@ export async function parseMod(input, fileName = "mod.zip") {
       outlineRadius: obj.outlineRadius !== undefined ? Number(obj.outlineRadius) : undefined,
       rotate: obj.rotate !== undefined ? !!obj.rotate : undefined,
       consumesPower: !!(obj.consumes && obj.consumes.power !== undefined),
+      // 电力：powerProduction（每刻发电，缺省 0）、consumes.power（每刻耗电，缺省 0）
+      powerProduction:
+        obj.powerProduction !== undefined && !Number.isNaN(Number(obj.powerProduction))
+          ? Number(obj.powerProduction)
+          : 0,
+      powerUsage:
+        obj.consumes && obj.consumes.power !== undefined && !Number.isNaN(Number(obj.consumes.power))
+          ? Number(obj.consumes.power)
+          : 0,
       // 电力节点激光参数（缺失记 undefined）
       laserRange: obj.laserRange !== undefined ? Number(obj.laserRange) : undefined,
       laserScale: obj.laserScale !== undefined ? Number(obj.laserScale) : undefined,

@@ -5,8 +5,9 @@
 // 直接累加，无任何倍率；没有数据的方块跳过。
 // =============================================================================
 
-import { BLOCK_REQUIREMENTS, ITEM_CN } from "./requirements_data.js?v=20260913j";
-import { CONTENT_CN } from "./data.js?v=20260913j";
+import { BLOCK_REQUIREMENTS, ITEM_CN } from "./requirements_data.js?v=20260913k";
+import { CONTENT_CN } from "./data.js?v=20260913k";
+import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260913k";
 
 /**
  * 累加蓝图总耗材。
@@ -30,6 +31,40 @@ export function computeRequirements(tiles, table = BLOCK_REQUIREMENTS) {
  * 返回排序后的耗材列表：[{ item, name, count }]，按数量降序，再按名称升序。
  * 名称优先 nameOf(item)（模组 bundle），其次 ITEM_CN，再 CONTENT_CN，最后英文名。
  */
+/**
+ * 官方 arc.util.Strings.autoFixed(x, decimalPlaces)：保留至多 decimalPlaces 位小数，
+ * 去掉尾随 0 与小数点（如 30 → "30"、7.2 → "7.2"、108 → "108"）。
+ */
+export function autoFixed(value, decimalPlaces = 2) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "0";
+  let s = n.toFixed(decimalPlaces);
+  if (s.indexOf(".") >= 0) s = s.replace(/\.?0+$/, "");
+  return s === "" || s === "-0" ? "0" : s;
+}
+
+/**
+ * 蓝图电力收支（每刻），照官方 Schematic.powerProduction()/powerConsumption()：
+ *   production  = Σ (block instanceof PowerGenerator ? getDisplayedPowerProduction() : 0)
+ *   consumption = Σ (block.consPower != null ? block.consPower.usage : 0)
+ * 生成的表中 powerProduction 已是 getDisplayedPowerProduction() 的值（ThermalGenerator
+ * 已按 displayEfficiencyScale 折算），powerUsage 即 consPower.usage（缺省 0）。
+ * @param {Array<{block:string}>} tiles 蓝图方块列表
+ * @param {Object} blockTable 方块 → { powerProduction?, powerUsage? }（vanilla 或含模组）
+ * @returns {{production:number, consumption:number}}
+ */
+export function computePower(tiles, blockTable = VANILLA_BLOCKS) {
+  let production = 0;
+  let consumption = 0;
+  for (const t of tiles) {
+    const def = blockTable[t.block];
+    if (!def) continue;
+    production += Number(def.powerProduction) || 0;
+    consumption += Number(def.powerUsage) || 0;
+  }
+  return { production, consumption };
+}
+
 export function requirementsList(tiles, table = BLOCK_REQUIREMENTS, nameOf = null) {
   const totals = computeRequirements(tiles, table);
   return [...totals.entries()]
