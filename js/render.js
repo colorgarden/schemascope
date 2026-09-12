@@ -22,7 +22,7 @@ import {
   BRIDGE_WIDTH,
   BRIDGE_OPACITY,
   TEAM_PALETTE,
-} from "./data.js?v=20260913i";
+} from "./data.js?v=20260913j";
 import {
   vanillaRule,
   rangeOfBlock,
@@ -41,8 +41,9 @@ import {
   typeOfBlock,
   sizeOfBlock,
   baseOf,
-} from "./render_rules.js?v=20260913i";
-import { makeTileWorld, buildBlending } from "./blending.js?v=20260913i";
+  isRotatableBlock,
+} from "./render_rules.js?v=20260913j";
+import { makeTileWorld, buildBlending } from "./blending.js?v=20260913j";
 
 /** 仅取自有属性，避免方块名（如 "constructor"）撞上 Object.prototype 上的同名属性。 */
 function own(obj, key) {
@@ -905,6 +906,12 @@ function drawBlockSpriteLayers(buf, cw, ch, t, e, sprites, layers, world) {
   }
 
   const names = layers ? staticLayerNames(t.block, t.rot) : [t.block];
+  // 通用静态层是否施加方块旋转：官方 Block.drawDefaultPlanRegion 用
+  // `rotate && rotateDraw`，不可旋转（Router/Unloader/OverflowGate/Junction/
+  // Sorter…）与 rotateDraw=false（HeatConductor/HeatProducer…）恒取 0°。
+  // 带显式 rot 的对象层（DrawRegion 的 rotation）不受此影响，见下方 lrot 分支。
+  const rotatable = isRotatableBlock(t.block, MOD_DEFS.get(t.block));
+  const drawRot = rotatable ? t.rot : 0;
   const ruleOutline = vanillaRule(t.block, MOD_DEFS.get(t.block)).outline;
   for (let li = 0; li < names.length; li++) {
     const item = names[li];
@@ -929,7 +936,7 @@ function drawBlockSpriteLayers(buf, cw, ch, t, e, sprites, layers, world) {
       // 任意角度（度）绕中心旋转绘制（对应 DrawRegion 的 rotation）
       blitRotated(buf, cw, ch, rgba, sw, sh, cx + dx, cy + dy, 1.0, lrot, [255, 255, 255], 1.0);
     } else {
-      const [rw, rh, rrgba] = rotateSprite(rgba, sw, sh, t.rot);
+      const [rw, rh, rrgba] = rotateSprite(rgba, sw, sh, drawRot);
       blend(buf, cw, ch, cx + dx - Math.floor(rw / 2), cy + dy - Math.floor(rh / 2), rrgba, rw, rh);
     }
   }

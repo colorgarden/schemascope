@@ -57,6 +57,7 @@ import {
   turretSpriteNames,
   autotilerSpriteNames,
   selectMissingSprites,
+  isRotatableBlock,
 } from "../js/render_rules.js";
 import { VANILLA_TURRETS } from "../js/vanilla_turrets.js";
 import { makeTileWorld, buildBlending, transformCase, mod4, d4x, d4y, relativeTo, getFacingEdge, blends } from "../js/blending.js";
@@ -1852,6 +1853,120 @@ function testRenderRules() {
 }
 
 // -----------------------------------------------------------------------------
+// 8.45 旋转控制（Block.rotate / Block.rotateDraw）—— 通用路径是否施加蓝图 rot
+//
+// 官方 v159.7 Block.drawDefaultPlanRegion：
+//   Draw.rect(reg, x, y, !rotate || !rotateDraw ? 0 : plan.rotation * 90)
+// 因此不可旋转方块（Router/Unloader/OverflowGate/Junction/Sorter…）与
+// rotateDraw=false 的方块（HeatConductor/HeatProducer…）贴图不随 rot 旋转。
+// -----------------------------------------------------------------------------
+function testRotateControl() {
+  console.log("== 旋转控制（rotate/rotateDraw）测试 ==");
+
+  // (a) 语义抽样：vanilla_blocks.js 的 rotate / rotateDraw
+  check("rotate: router=false", isRotatableBlock("router") === false);
+  check("rotate: unloader=false", isRotatableBlock("unloader") === false);
+  check("rotate: overflow-gate=false", isRotatableBlock("overflow-gate") === false);
+  check("rotate: junction=false", isRotatableBlock("junction") === false);
+  check("rotate: sorter=false", isRotatableBlock("sorter") === false);
+  check("rotate: conveyor=true", isRotatableBlock("conveyor") === true);
+  check("rotate: duct=true", isRotatableBlock("duct") === true);
+  check("rotate: conduit=true", isRotatableBlock("conduit") === true);
+  check("rotate: ground-factory=true", isRotatableBlock("ground-factory") === true);
+  check("rotate: duct-router=true", isRotatableBlock("duct-router") === true);
+  check("rotate: additive-reconstructor=false", isRotatableBlock("additive-reconstructor") === false);
+  // rotateDraw=false：rotate=true 但本体不转（官方 `!rotate || !rotateDraw`）
+  check("rotateDraw: heat-redirector=false", isRotatableBlock("heat-redirector") === false);
+  check("rotateDraw: heat-router=false", isRotatableBlock("heat-router") === false);
+  check("rotateDraw: electric-heater=false", isRotatableBlock("electric-heater") === false);
+  check("rotateDraw: coal-centrifuge=false", isRotatableBlock("coal-centrifuge") === false);
+
+  // VANILLA_BLOCKS 原始标志（生成器输出）
+  check(
+    "VANILLA_BLOCKS conveyor flags.rotate",
+    !!(VANILLA_BLOCKS.conveyor.flags && VANILLA_BLOCKS.conveyor.flags.rotate)
+  );
+  check(
+    "VANILLA_BLOCKS router 无 rotate",
+    !(VANILLA_BLOCKS.router.flags && VANILLA_BLOCKS.router.flags.rotate)
+  );
+  check(
+    "VANILLA_BLOCKS additive-reconstructor 无 rotate",
+    !(VANILLA_BLOCKS["additive-reconstructor"].flags && VANILLA_BLOCKS["additive-reconstructor"].flags.rotate)
+  );
+  check(
+    "VANILLA_BLOCKS heat-router rotate=true 且 rotateDraw=false",
+    !!(VANILLA_BLOCKS["heat-router"].flags && VANILLA_BLOCKS["heat-router"].flags.rotate) &&
+      VANILLA_BLOCKS["heat-router"].flags.rotateDraw === false
+  );
+  // 模组：按 type 找同类默认
+  check(
+    "rotate: 模组 Router=false",
+    isRotatableBlock("模组-路由", { base: "模组-路由", type: "Router" }) === false
+  );
+  check(
+    "rotate: 模组 Conveyor=true",
+    isRotatableBlock("模组-带子", { base: "模组-带子", type: "Conveyor" }) === true
+  );
+
+  // (b) 不可旋转方块：rot=1/2/3 与 rot=0 逐像素一致（不对称假贴图）
+  const W = TILE;
+  const mkMarker = () => {
+    const rgba = new Uint8ClampedArray(W * W * 4);
+    for (let i = 0; i < W * W; i++) {
+      rgba[i * 4] = 20; rgba[i * 4 + 1] = 20; rgba[i * 4 + 2] = 20; rgba[i * 4 + 3] = 255;
+    }
+    for (let y = 1; y <= 10; y++) {
+      for (let x = 1; x <= 10; x++) {
+        const o = (y * W + x) * 4;
+        rgba[o] = 255; rgba[o + 1] = 255; rgba[o + 2] = 255; rgba[o + 3] = 255;
+      }
+    }
+    return { w: W, h: W, size: 1, rgba, placeholder: false };
+  };
+  const render1 = (block, sprites, rot) =>
+    renderSchematic(
+      { width: 1, height: 1, tiles: [{ block, x: 0, y: 0, rot, config_type: "null", config: null }] },
+      sprites,
+      { scale: 1, pad: 0, transparent: true, grid: false }
+    ).rgba;
+  const byteEqual = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+
+  for (const b of ["router", "unloader", "overflow-gate", "junction", "sorter"]) {
+    const sprites = { [b]: mkMarker() };
+    const r0 = render1(b, sprites, 0);
+    const same = [1, 2, 3].every((rot) => byteEqual(r0, render1(b, sprites, rot)));
+    check(`不可旋转方块 ${b} rot1/2/3 与 rot0 逐像素一致`, same);
+  }
+  // rotateDraw=false：同样不旋转
+  for (const b of ["heat-router", "heat-redirector", "electric-heater"]) {
+    const sprites = { [b]: mkMarker() };
+    const r0 = render1(b, sprites, 0);
+    const same = [1, 2, 3].every((rot) => byteEqual(r0, render1(b, sprites, rot)));
+    check(`rotateDraw=false 方块 ${b} rot1/2/3 与 rot0 一致`, same);
+  }
+
+  // (c) 可旋转方块：rot=1 与 rot=0 不同（拼接路径始终用 rotation）
+  for (const [b, names] of [
+    ["conveyor", { "conveyor-0-0": mkMarker() }],
+    ["titanium-conveyor", { "titanium-conveyor-0-0": mkMarker() }],
+    ["duct", { "duct-bottom": mkMarker(), "duct-top-0": mkMarker() }],
+    ["conduit", { "conduit-bottom": mkMarker(), "conduit-top-0": mkMarker() }],
+  ]) {
+    const r0 = render1(b, names, 0);
+    const r1 = render1(b, names, 1);
+    let diff = false;
+    for (let i = 0; i < r0.length; i++) {
+      if (r0[i] !== r1[i]) {
+        diff = true;
+        break;
+      }
+    }
+    check(`可旋转方块 ${b} rot1 与 rot0 不同`, diff);
+  }
+}
+
+// -----------------------------------------------------------------------------
 // 8.5 邻居拼接（Autotiler）+ 炮塔部件（DrawTurret / RegionPart）
 // -----------------------------------------------------------------------------
 function testBlending() {
@@ -2305,6 +2420,7 @@ async function main() {
   testConfigRender();
   testDrawerLayers();
   testRenderRules();
+  testRotateControl();
   testBlending();
   testTurretParts();
   testSpriteAudit();

@@ -25,8 +25,8 @@
 // 从而保持既有校验效果。
 // =============================================================================
 
-import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260913i";
-import { VANILLA_TURRETS } from "./vanilla_turrets.js?v=20260913i";
+import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260913j";
+import { VANILLA_TURRETS } from "./vanilla_turrets.js?v=20260913j";
 
 /** 仅取自有属性，避免方块名（如 "constructor"）撞上 Object.prototype 上的同名属性。 */
 function own(obj, key) {
@@ -481,11 +481,36 @@ export function blockProps(blockName, def) {
     outputsItems: f.outputsItems !== undefined ? !!f.outputsItems : hasItems,
     squareSprite: f.squareSprite !== false,
     rotate: !!f.rotate,
+    rotateDraw: f.rotateDraw !== false,
     isDuct: !!f.isDuct,
     armored: !!f.armored,
     // 近似标记：GenericCrafter 家族的 rotatedOutput 依赖输出方向，静态渲染按 false 处理
     isGenericCrafterLike: GENERIC_CRAFTER_TYPES.has(type),
   };
+}
+
+/**
+ * 通用静态绘制是否应把蓝图 rot 施加到方块贴图上。
+ *
+ * 官方依据（v159.7）：
+ *   Block.drawDefaultPlanRegion()：
+ *     Draw.rect(reg, x, y, !rotate || !rotateDraw ? 0 : plan.rotation * 90)
+ *   即只有 `rotate && rotateDraw` 才旋转；否则恒 0°。
+ *   rotate 默认 false、rotateDraw 默认 true（Block.java:122）。
+ *
+ * vanilla 直接查 js/vanilla_blocks.js 的 flags（rotate/rotateDraw 按类自身声明，
+ * 仅记录与类默认不同的值），避免用「同类首个方块」的默认值污染具体方块；
+ * 模组按 type 找同类默认，再叠加 def.flags，找不到默认 false。
+ */
+export function isRotatableBlock(blockName, def) {
+  const v = own(VANILLA_BLOCKS, blockName);
+  if (v) {
+    const f = v.flags || {};
+    return !!f.rotate && f.rotateDraw !== false;
+  }
+  const modFlags = (def && def.flags) || {};
+  const f = Object.assign({}, typeFlagDefaults(typeOfBlock(blockName, def)), modFlags);
+  return !!f.rotate && f.rotateDraw !== false;
 }
 
 // -----------------------------------------------------------------------------

@@ -9,9 +9,11 @@
 #   # 默认输出 js/vanilla_blocks.js 与 js/vanilla_turrets.js
 #   # 可用第二参数改 Blocks 输出路径；--turrets-out 改炮塔输出路径。
 #
-# 类型级默认属性（hasItems/hasLiquids/outputsLiquid/squareSprite/rotate/isDuct）
-# 来自同目录的 vanilla_type_flags.py（继承解析后的官方类默认值）。如需从源码
-# 重新烘焙该数据模块，可传：
+# 类型级默认属性（hasItems/hasLiquids/outputsLiquid/squareSprite/isDuct，以及
+# 继承解析后的 TYPE_FLAGS）来自同目录的 vanilla_type_flags.py。rotate / rotateDraw
+# 单独取 CLASS_ROTATE / CLASS_ROTATE_DRAW —— 即类「自身」是否声明（不解析继承），
+# 用于还原官方 Block.drawDefaultPlanRegion 的 `!rotate || !rotateDraw ? 0 : rot` 语义。
+# 如需从源码重新烘焙该数据模块，可传：
 #   python3 tools/gen_vanilla_blocks.py Blocks.java --src-root <core/src/mindustry>
 #
 # 解析策略：
@@ -28,10 +30,10 @@ import sys
 from pathlib import Path
 
 try:
-    from vanilla_type_flags import TYPE_FLAGS
+    from vanilla_type_flags import TYPE_FLAGS, CLASS_ROTATE, CLASS_ROTATE_DRAW
 except ImportError:  # 作为脚本直接运行（同目录）
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from vanilla_type_flags import TYPE_FLAGS
+    from vanilla_type_flags import TYPE_FLAGS, CLASS_ROTATE, CLASS_ROTATE_DRAW
 
 # 非方块构造（drawer / part 等），解析方块定义时跳过。
 DRAWER_CLASS_RE = re.compile(r'^(Draw|.*Draw[A-Z])')
@@ -85,7 +87,7 @@ def find_block_body(src: str, start: int) -> str:
 
 
 FLAG_KEYS = ("hasItems", "hasLiquids", "outputsLiquid", "outputsItems",
-             "squareSprite", "rotate", "isDuct", "armored", "noSideBlend")
+             "squareSprite", "rotate", "rotateDraw", "isDuct", "armored", "noSideBlend")
 
 
 def parse_explicit_flags(body: str) -> dict:
@@ -155,9 +157,15 @@ def parse_blocks(src: str) -> dict:
         square = ex.get("squareSprite", tf.get("sq", True))
         if square is False:
             flags["squareSprite"] = False
-        rotate = ex.get("rotate", tf.get("rot", False))
+        # rotate / rotateDraw：按类「自身」声明（CLASS_ROTATE，官方 Block.rotate 默认
+        # false），再叠加方块体显式覆盖。不解析继承：Reconstructor 一类自身未声明
+        # rotate，其本体走自绘路径，记为 false（见 vanilla_type_flags.py 注释）。
+        rotate = ex.get("rotate", CLASS_ROTATE.get(cls, False))
         if rotate:
             flags["rotate"] = True
+        rotate_draw = ex.get("rotateDraw", CLASS_ROTATE_DRAW.get(cls, True))
+        if rotate_draw is False:
+            flags["rotateDraw"] = False
         is_duct = ex.get("isDuct", tf.get("duct", False))
         if is_duct:
             flags["isDuct"] = True
@@ -391,9 +399,12 @@ HEAD_BLOCKS = '''// ============================================================
 //
 // 字段：方块内部名 -> { type: 官方 Java 类名, size: 占地, range?: 连接范围,
 //   flags?: { hasItems/hasLiquids/outputsLiquid/outputsItems/squareSprite/rotate/
-//             isDuct/armored } }。flags 仅记录与类默认不同的值（squareSprite 仅记 false，
-//   其余仅记 true）。类型是 render_rules.js 类型规则表的键；flags 是
-//   js/blending.js 邻居拼接判定的事实来源。
+//             rotateDraw/isDuct/armored } }。flags 仅记录与类默认不同的值
+//   （squareSprite/rotateDraw 仅记 false，其余仅记 true）。类型是 render_rules.js
+//   类型规则表的键；flags 是 js/blending.js 邻居拼接判定的事实来源。
+//   rotate / rotateDraw 按类「自身」声明（CLASS_ROTATE/CLASS_ROTATE_DRAW，不解析
+//   继承），对应官方 Block.drawDefaultPlanRegion 的旋转条件；通用渲染路径据此
+//   决定是否把蓝图 rot 施加到方块贴图上（见 render_rules.isRotatableBlock）。
 // =============================================================================
 '''
 
@@ -464,6 +475,50 @@ def emit_turrets(turrets: dict, path: Path):
     print("生成 %s：%d 个炮塔" % (path, len(turrets)))
 
 
+CLASS_ROTATE_HEAD = '''
+
+# -----------------------------------------------------------------------------
+# CLASS_ROTATE / CLASS_ROTATE_DRAW —— 类「自身」是否声明 rotate / rotateDraw
+#
+# 与上面的 TYPE_FLAGS 不同：这里**不解析继承**，只记录该类构造器/字段初始化里
+# 显式写下的 `rotate = true/false`（见官方 Block.java：rotate 默认 false）。
+# 这是 js/vanilla_blocks.js 的 rotate 标志来源（按 v159.7 类文件逐一核对）：
+#   * rotate=false 的方块（Router/Unloader/OverflowGate/Junction/Sorter…）通用静态
+#     绘制恒取 0°，不随蓝图 rot 旋转。
+#   * 继承自父类的 rotate（如 Reconstructor 的 UnitBlock.rotate=true）不在本表；
+#     这类类本身未声明 rotate，故按 false 处理（其本体走各自的自绘路径）。
+# CLASS_ROTATE_DRAW 默认 true；显式 false 的类（HeatConductor/HeatProducer/
+# HeaterGenerator/UnitAssembler/UnitAssemblerModule/RegenProjector）在官方
+# Block.drawDefaultPlanRegion 里也取 0°（`!rotate || !rotateDraw ? 0 : rotation*90`）。
+# -----------------------------------------------------------------------------
+'''
+
+
+def collect_class_rotate(src_root: Path):
+    """按类体解析每个类「自身」声明的 rotate / rotateDraw（不解析继承）。"""
+    rot, rdraw = {}, {}
+    for f in src_root.rglob("*.java"):
+        raw = f.read_text(encoding="utf-8", errors="ignore")
+        s = re.sub(r"/\*.*?\*/", "", raw, flags=re.S)
+        s = re.sub(r"//[^\n]*", "", s)
+        s = re.sub(r'"(\\.|[^"\\])*"', '""', s)
+        for m in re.finditer(r"\b(?:class|interface|enum)\s+(\w+)", s):
+            nm = m.group(1)
+            bi = s.find("{", m.end())
+            if bi < 0:
+                continue
+            body = s[bi + 1:find_matching(s, bi)]
+            if nm not in rot:
+                rm = re.search(r"\brotate\s*=\s*(true|false)", body)
+                if rm:
+                    rot[nm] = rm.group(1) == "true"
+            if nm not in rdraw:
+                dm = re.search(r"\brotateDraw\s*=\s*(true|false)", body)
+                if dm:
+                    rdraw[nm] = dm.group(1) == "true"
+    return rot, rdraw
+
+
 def bake_type_flags(blocks_src: str, src_root: Path):
     """（可选）从官方类源码重新烘焙 vanilla_type_flags.py。"""
     classes = {}
@@ -532,6 +587,18 @@ def bake_type_flags(blocks_src: str, src_root: Path):
             d["oi"] = "dep"
         if d:
             lines.append("    %r: {%s}," % (t, ", ".join("%r: %r" % (k, v) for k, v in sorted(d.items()))))
+    lines.append("}")
+    lines.append(CLASS_ROTATE_HEAD.strip("\n"))
+    cr, crd = collect_class_rotate(src_root)
+    lines.append("")
+    lines.append("CLASS_ROTATE = {")
+    for t in sorted(cr):
+        lines.append("    %r: %r," % (t, cr[t]))
+    lines.append("}")
+    lines.append("")
+    lines.append("CLASS_ROTATE_DRAW = {")
+    for t in sorted(crd):
+        lines.append("    %r: %r," % (t, crd[t]))
     lines.append("}")
     lines.append("")
     out = Path(__file__).resolve().parent / "vanilla_type_flags.py"

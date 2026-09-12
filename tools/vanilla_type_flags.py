@@ -234,3 +234,59 @@ TYPE_FLAGS = {
     'WallCrafterBuild': {'hi': True, 'oi': True, 'rot': True},
     'YeetData': {'hi': True, 'rot': True},
 }
+
+# -----------------------------------------------------------------------------
+# CLASS_ROTATE / CLASS_ROTATE_DRAW —— 类「自身」是否声明 rotate / rotateDraw
+#
+# 与上面的 TYPE_FLAGS 不同：这里**不解析继承**，只记录该类构造器/字段初始化里
+# 显式写下的 `rotate = true/false`（见官方 Block.java：rotate 默认 false）。
+# 这是 js/vanilla_blocks.js 的 rotate 标志来源（按 v159.7 类文件逐一核对）：
+#   * rotate=false 的方块（Router/Unloader/OverflowGate/Junction/Sorter…）通用静态
+#     绘制恒取 0°，不随蓝图 rot 旋转。
+#   * 继承自父类的 rotate（如 Reconstructor 的 UnitBlock.rotate=true）不在本表；
+#     这类类本身未声明 rotate，故按 false 处理（其本体走各自的自绘路径）。
+# CLASS_ROTATE_DRAW 默认 true；显式 false 的类（HeatConductor/HeatProducer/
+# HeaterGenerator/UnitAssembler/UnitAssemblerModule/RegenProjector）在官方
+# Block.drawDefaultPlanRegion 里也取 0°（`!rotate || !rotateDraw ? 0 : rotation*90`）。
+# 复跑：python3 tools/gen_vanilla_blocks.py <Blocks.java> --src-root core/src/mindustry
+# -----------------------------------------------------------------------------
+CLASS_ROTATE = {
+    'BeamDrill': True,
+    'BlockProducer': True,
+    'CharacterOverlay': True,
+    'Conduit': True,
+    'Conveyor': True,
+    'DirectionBridge': True,
+    'DirectionalUnloader': True,
+    'Duct': True,
+    'DuctRouter': True,
+    'HeatConductor': True,
+    'HeatProducer': True,
+    'HeaterGenerator': True,
+    'OverflowDuct': True,
+    'PayloadConveyor': True,
+    'PayloadDeconstructor': False,
+    'PayloadLoader': True,
+    'PayloadMassDriver': True,
+    'PayloadSource': True,
+    'PayloadVoid': False,
+    'PowerDiode': True,
+    'StackConveyor': True,
+    'Thruster': True,
+    'Turret': True,
+    'UnitAssembler': True,
+    'UnitAssemblerModule': True,
+    'UnitBlock': True,
+    'UnitFactory': True,
+    'WallCrafter': True,
+}
+
+CLASS_ROTATE_DRAW = {
+    'Block': True,
+    'HeatConductor': False,
+    'HeatProducer': False,
+    'HeaterGenerator': False,
+    'RegenProjector': False,
+    'UnitAssembler': False,
+    'UnitAssemblerModule': False,
+}
