@@ -23,7 +23,7 @@ import {
   BRIDGE_RANGE,
   BRIDGE_WIDTH,
   BRIDGE_OPACITY,
-} from "./data.js";
+} from "./data.js?v=20260913c";
 
 // 模组方块的多层启发式（仅当 vanilla LAYERS 未定义该块时使用）
 let MOD_LAYERS = {};

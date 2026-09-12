@@ -14,21 +14,21 @@ import {
   DEFAULT_PAD,
   configSpriteNames,
   spriteAliasCandidates,
-} from "./data.js";
-import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js";
-import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js";
-import { setIconIndex, richText, plainTextWithIcons, itemIconSrc } from "./icons.js";
-import { simpleHash, createPrefetchManager } from "./prefetch.js";
-import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js";
-import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js";
-import { requirementsList } from "./requirements.js";
-import { BLOCK_REQUIREMENTS } from "./requirements_data.js";
-import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js";
-import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js";
-import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js";
+} from "./data.js?v=20260913c";
+import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913c";
+import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913c";
+import { setIconIndex, richText, plainTextWithIcons, itemIconSrc } from "./icons.js?v=20260913c";
+import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913c";
+import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913c";
+import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913c";
+import { requirementsList } from "./requirements.js?v=20260913c";
+import { BLOCK_REQUIREMENTS } from "./requirements_data.js?v=20260913c";
+import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913c";
+import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913c";
+import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913c";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260913b";
+const APP_VERSION = "20260913c";
 
 // -----------------------------------------------------------------------------
 // DOM
