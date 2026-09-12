@@ -8,27 +8,24 @@ import {
   CONTENT_CN,
   LOCAL_SPRITE_DIR,
   AUX_PATHS,
-  LAYERS,
-  BRIDGE_BLOCKS,
   DEFAULT_SCALE,
   DEFAULT_PAD,
-  configSpriteNames,
-  spriteAliasCandidates,
-} from "./data.js?v=20260913c";
-import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913c";
-import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913c";
-import { setIconIndex, richText, plainTextWithIcons, itemIconSrc } from "./icons.js?v=20260913c";
-import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913c";
-import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913c";
-import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913c";
-import { requirementsList } from "./requirements.js?v=20260913c";
-import { BLOCK_REQUIREMENTS } from "./requirements_data.js?v=20260913c";
-import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913c";
-import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913c";
-import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913c";
+} from "./data.js?v=20260913d";
+import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913d";
+import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913d";
+import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock } from "./render_rules.js?v=20260913d";
+import { setIconIndex, richText, plainTextWithIcons, itemIconSrc } from "./icons.js?v=20260913d";
+import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913d";
+import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913d";
+import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913d";
+import { requirementsList } from "./requirements.js?v=20260913d";
+import { BLOCK_REQUIREMENTS } from "./requirements_data.js?v=20260913d";
+import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913d";
+import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913d";
+import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913d";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260913c";
+const APP_VERSION = "20260913d";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -104,6 +101,7 @@ let modNames = []; // 模组内部名（用于去前缀）
 let modOverrideIndex = new Map(); // basename -> 提供该贴图的模组（sprites-override）
 let modNormalIndex = new Map(); // basename -> 提供该贴图的模组（sprites/）
 let modLayersMap = {}; // 方块名 -> [贴图层名, ...]
+let modDefs = new Map(); // 方块名（内部名/base）-> 模组方块定义（type/size/range/base）
 let modBridgeNames = new Set(); // 模组桥方块名（内部名与 base）
 let modBlockSizes = new Map(); // 方块名（内部名/base）-> size
 let modRequirementsTable = {}; // 方块名 -> requirements
@@ -273,6 +271,7 @@ function rebuildModDerived() {
   modRequirementsTable = {};
   modBundle = new Map();
   modLayersMap = {};
+  modDefs = new Map();
   modBridgeNames = new Set();
   const bridgeMap = new Map(); // name -> { range, width }
   const outlineMap = new Map(); // name -> [[r,g,b], radius]
@@ -289,6 +288,7 @@ function rebuildModDerived() {
     for (const [key, def] of m.blocks) {
       modBlockSizes.set(key, def.size);
       modRequirementsTable[key] = def.requirements;
+      modDefs.set(key, def);
 
       // 桥：type 以 Bridge 结尾（ItemBridge/LiquidBridge/…）
       if (isBridgeType(def.type)) {
@@ -346,7 +346,10 @@ function rebuildModDerived() {
       if (seen.has(def.base)) continue;
       seen.add(def.base);
       const layers = drawerStaticLayers(def, spriteExists);
-      if (layers.length > 1 || layers.some((x) => typeof x === "object")) {
+      // 显式 drawer 的静止层优先（即使只有 1 层），避免被类型规则覆盖；
+      // 无 drawer 时只登记多层/带偏移项，单层交给类型规则（如 Conveyor/Conduit）。
+      const hasDrawer = def.drawer !== undefined && def.drawer !== null;
+      if (hasDrawer || layers.length > 1 || layers.some((x) => typeof x === "object")) {
         modLayersMap[m.name + "-" + def.base] = layers;
         modLayersMap[def.base] = layers;
       }
@@ -366,6 +369,7 @@ function rebuildModDerived() {
   modItemNames = itemNames;
   setModColors(itemColors);
   setModLayers(modLayersMap);
+  setModBlockDefs(modDefs);
   setModBridges(bridgeMap);
   setModOutline(outlineMap);
   setModPowerBlocks(powerSet);
@@ -420,9 +424,11 @@ async function findModSpriteExact(key) {
 function isKnownBlock(name) {
   if (spriteIndex.blocks && spriteIndex.blocks[name]) return true;
   if (spriteIndex.all && spriteIndex.all[name]) return true;
-  for (const c of spriteAliasCandidates(name)) {
+  for (const c of spriteVariantCandidates(name, modDefs.get(name))) {
     if ((spriteIndex.blocks && spriteIndex.blocks[c]) || (spriteIndex.all && spriteIndex.all[c])) return true;
   }
+  // 已知类型的 vanilla 方块（即使当前索引缺该贴图）也不算「未识别」——避免误报缺少模组
+  if (typeOfBlock(name, modDefs.get(name))) return true;
   if (modBlockSizes.has(name)) return true;
   for (const c of modSpriteCandidates(name, modNames)) {
     if (modBlockSizes.has(c) || (spriteIndex.all && spriteIndex.all[c]) || (spriteIndex.blocks && spriteIndex.blocks[c])) {
@@ -491,7 +497,7 @@ async function loadSprite(name, required) {
   // 3. CDN（vanilla 索引；镜像源自动切换）；无本体图时用变体兜底（传送带 -0-0 / 导管 -bottom 等）
   let rel = spriteRelPath(name);
   if (!rel) {
-    for (const c of spriteAliasCandidates(name)) {
+    for (const c of spriteVariantCandidates(name, modDefs.get(name))) {
       rel = spriteRelPath(c);
       if (rel) break;
     }
@@ -507,9 +513,15 @@ async function loadSprite(name, required) {
     }
   }
 
-  // 4. 模组 sprites（普通）
+  // 4. 模组 sprites（普通 + 按类型的变体兜底，如模组传送带 -0-0 / 导管 -top-0）
   {
-    const blob = await modNormalSprite(name);
+    let blob = await modNormalSprite(name);
+    if (!blob) {
+      for (const c of spriteVariantCandidates(name, modDefs.get(name))) {
+        blob = await findModSprite(c);
+        if (blob) break;
+      }
+    }
     if (blob) {
       const sp = await blobToSprite(blob);
       spriteCache.set(name, sp);
@@ -533,18 +545,16 @@ function collectNeeded(schem) {
   };
   for (const t of schem.tiles) {
     add(t.block, true);
-    const ls = LAYERS[t.block] || modLayersMap[t.block];
-    if (ls) {
-      for (const l of ls) {
-        const lname = typeof l === "string" ? l : l && l.name;
-        if (lname) add(lname, lname === t.block);
-      }
+    // 图层：模组 drawer / 类型规则 / vanilla LAYERS 统一解析（含变体兜底）
+    for (const l of staticLayerNames(t.block, t.rot)) {
+      const lname = typeof l === "string" ? l : l && l.name;
+      if (lname) add(lname, lname === t.block);
     }
-    if (BRIDGE_BLOCKS.has(t.block) || modBridgeNames.has(t.block)) {
+    if (isBridgeBlockName(t.block)) {
       add(t.block + "-bridge", false);
       add(t.block + "-arrow", false);
     }
-    for (const n of configSpriteNames(t.block)) add(n, false);
+    for (const n of configSpriteNamesFor(t.block, modDefs.get(t.block))) add(n, false);
   }
   for (const n of ["center", "cross", "cross-full", "laser", "laser-end", "schematic-background"]) add(n, false);
   return needed;

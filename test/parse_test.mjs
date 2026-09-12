@@ -34,8 +34,23 @@ import {
   setModPowerNodes,
   setModLayers,
   setModColors,
+  setModBlockDefs,
+  staticLayerNames,
+  isBridgeBlockName,
   nodeLaserOpts,
 } from "../js/render.js";
+import {
+  vanillaRule,
+  spriteVariantCandidates,
+  configKindOf,
+  configSpriteNamesFor,
+  isBridgeBlock,
+  bridgeRange,
+  typeOfBlock,
+  sizeOfBlock,
+  hasTypeRule,
+} from "../js/render_rules.js";
+import { VANILLA_BLOCKS } from "../js/vanilla_blocks.js";
 import { blockDisplayName, modNameCandidates, spriteDisplayName } from "../js/names.js";
 import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN, CONTENT_COLORS, CONFIG_UNDERLAY, CONFIG_OVERLAY, configSpriteNames, spriteAliasCandidates } from "../js/data.js";
 import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, ICON_FONT_LO } from "../js/icons.js";
@@ -1510,6 +1525,218 @@ function testDrawerLayers() {
 }
 
 // -----------------------------------------------------------------------------
+// 8e. 类型驱动渲染规则表（render_rules.js）
+// -----------------------------------------------------------------------------
+function testRenderRules() {
+  console.log("== 渲染规则表测试 ==");
+
+  // (a) 每类至少 1 条：用合成 def 覆盖类型表所有键
+  const X = { base: "x", type: "" };
+  const typeCases = [
+    ["Conveyor", ["x-0-0"]],
+    ["ArmoredConveyor", ["x-0-0"]],
+    ["StackConveyor", ["x"]],
+    ["Conduit", ["conduit-bottom", "x-top-0"]],
+    ["ArmoredConduit", ["conduit-bottom", "x-top-0"]],
+    ["Duct", ["duct-bottom", "x-top-0"]],
+    ["MassDriver", ["x-base", "x"]],
+    ["Sorter", ["x"]],
+    ["Unloader", ["x"]],
+    ["DirectionalUnloader", ["x", "x-top"]],
+    ["DuctRouter", ["x", "x-top"]],
+    ["OverflowDuct", ["x", "x-top"]],
+    ["StackRouter", ["x", "x-top"]],
+    ["ItemBridge", ["x"]],
+    ["BufferedItemBridge", ["x"]],
+    ["LiquidBridge", ["x"]],
+    ["DirectionLiquidBridge", ["x"]],
+    ["DuctBridge", ["x"]],
+    ["DirectionBridge", ["x"]],
+    ["Drill", ["x", "x-rotator", "x-top"]],
+    ["BurstDrill", ["x", "x-top"]],
+    ["BeamDrill", ["x", "x-top"]],
+    ["WallCrafter", ["x", "x-rotator-bottom", "x-rotator", "x-top"]],
+    ["SolidPump", ["x", "x-rotator", "x-top"]],
+    ["Fracker", ["x", "x-rotator", "x-top"]],
+    ["Pump", ["x"]],
+    ["GenericCrafter", null],
+    ["AttributeCrafter", null],
+    ["HeatCrafter", null],
+    ["Separator", ["x"]],
+    ["Battery", ["x", "x-top"]],
+    ["NuclearReactor", ["x", "x-top"]],
+    ["ConsumeGenerator", ["x", "x-top"]],
+    ["ThermalGenerator", ["x", "x-rotator"]],
+    ["PowerGenerator", ["x"]],
+    ["LightBlock", ["x", "x-top"]],
+    ["ImpactReactor", null],
+    ["VariableReactor", null],
+    ["ForceProjector", ["x"]],
+    ["MendProjector", ["x", "x-top"]],
+    ["OverdriveProjector", ["x", "x-top"]],
+    ["RegenProjector", null],
+    ["ShieldWall", ["x"]],
+    ["BaseShield", ["x"]],
+    ["Turret", ["x", "x-top"]],
+    ["BaseTurret", ["x", "x-top"]],
+    ["ItemTurret", ["x", "x-top"]],
+    ["LiquidTurret", ["x", "x-top"]],
+    ["PowerTurret", ["x", "x-top"]],
+    ["PointDefenseTurret", ["x", "x-top"]],
+    ["ContinuousTurret", ["x", "x-top"]],
+    ["ContinuousLiquidTurret", ["x", "x-top"]],
+    ["LaserTurret", ["x", "x-top"]],
+    ["TractorBeamTurret", ["x", "x-top"]],
+    ["RepairTurret", ["x", "x-top"]],
+    ["UnitFactory", ["x", "x-top"]],
+    ["Reconstructor", ["x", "x-top"]],
+    ["UnitAssembler", ["x", "x-top"]],
+    ["UnitAssemblerModule", ["x", "x-top"]],
+    ["LegacyUnitFactory", ["x", "x-top"]],
+    ["UnitCargoUnloadPoint", ["x", "x-top"]],
+    ["Constructor", ["x", "x-top"]],
+    ["PayloadDeconstructor", ["x", "x-top"]],
+    ["PayloadRouter", ["x", "x-top"]],
+    ["PayloadConveyor", ["x"]],
+    ["PayloadLoader", ["x", "x-top"]],
+    ["PayloadUnloader", ["x", "x-top"]],
+    ["PayloadSource", ["x", "x-top"]],
+    ["PayloadVoid", ["x", "x-top"]],
+    ["PayloadMassDriver", null],
+    ["LiquidRouter", null],
+    ["LiquidSource", ["x"]],
+    ["ItemSource", ["x"]],
+    ["Thruster", ["x", "x-top"]],
+    ["Incinerator", ["x", "x-top"]],
+    ["ItemIncinerator", ["x", "x-top"]],
+  ];
+  let typeOk = 0;
+  for (const [type, exp] of typeCases) {
+    const r = vanillaRule("x", { base: "x", type });
+    const got = r.regions ? r.regions(0) : null;
+    if (JSON.stringify(got) === JSON.stringify(exp)) typeOk++;
+    else check(`类型规则 ${type}`, false, `${JSON.stringify(got)} != ${JSON.stringify(exp)}`);
+  }
+  check(`类型规则表 ${typeCases.length} 类 regions(0)`, typeOk === typeCases.length, `${typeOk}/${typeCases.length}`);
+
+  // (b) regions(rot)：Conveyor 取 0 号变体（形状），旋转由 render.js 施加
+  check("Conveyor regions 与 rot 无关", JSON.stringify(vanillaRule("conveyor").regions(2)) === JSON.stringify(["conveyor-0-0"]));
+  // (c) 模组无 drawer 时按 type 套规则（含变体命名）
+  check("模组 Conveyor 规则", JSON.stringify(vanillaRule("模组-带子", { base: "模组-带子", type: "Conveyor" }).regions(0)) === JSON.stringify(["模组-带子-0-0"]));
+  check("模组 Conduit 规则", JSON.stringify(vanillaRule("m-c", { base: "m-c", type: "Conduit" }).regions(0)) === JSON.stringify(["conduit-bottom", "m-c-top-0"]));
+
+  // (d) 变体兜底命名
+  check("变体：titanium-conveyor", JSON.stringify(spriteVariantCandidates("titanium-conveyor")) === JSON.stringify(["titanium-conveyor-0-0"]));
+  check("变体：conduit", JSON.stringify(spriteVariantCandidates("conduit")) === JSON.stringify(["conduit-top-0", "conduit-bottom"]));
+  check("变体：armored-duct", JSON.stringify(spriteVariantCandidates("armored-duct")) === JSON.stringify(["armored-duct-top-0", "duct-bottom"]));
+  check("变体：mechanical-drill 保留旧兜底", JSON.stringify(spriteVariantCandidates("mechanical-drill")) === JSON.stringify(["mechanical-drill-0-0", "mechanical-drill-bottom", "mechanical-drill-top-0"]));
+
+  // (e) 桥：类判定 + range
+  check("phase-conveyor 是桥且 range=12", isBridgeBlock("phase-conveyor") && bridgeRange("phase-conveyor") === 12, JSON.stringify(vanillaRule("phase-conveyor").bridge));
+  check("bridge-conveyor range=4", vanillaRule("bridge-conveyor").bridge && vanillaRule("bridge-conveyor").bridge.range === 4);
+  check("duct-bridge 是桥", isBridgeBlock("duct-bridge"));
+  check("reinforced-bridge-conduit 是桥", isBridgeBlock("reinforced-bridge-conduit"));
+  check("mass-driver 非桥", !isBridgeBlock("mass-driver"));
+  check("isBridgeBlockName 兼容 legacy 名单", isBridgeBlockName("bridge") && isBridgeBlockName("phase-bridge"));
+
+  // (f) 配置种类（两种观感）
+  check("configKind Sorter=item", configKindOf("sorter") === "item" && configKindOf("item-source") === "item");
+  check("configKind Unloader=centerTint", configKindOf("unloader") === "centerTint" && configKindOf("duct-unloader") === "centerTint");
+  check("configKind LiquidSource=liquidSource", configKindOf("liquid-source") === "liquidSource");
+  check("configKind 普通方块=null", configKindOf("kiln") === null);
+  check("configSpriteNamesFor(unloader)", JSON.stringify(configSpriteNamesFor("unloader")) === JSON.stringify(["unloader-center"]));
+  check("configSpriteNamesFor(sorter)", JSON.stringify(configSpriteNamesFor("sorter")) === JSON.stringify(["cross-full"]));
+  check("configSpriteNamesFor(liquid-source)", JSON.stringify(configSpriteNamesFor("liquid-source")) === JSON.stringify(["source-bottom", "fluid"]));
+
+  // (g) workingOnly
+  check("workingOnly：force-projector", vanillaRule("force-projector").workingOnly === true);
+  check("workingOnly：shield-wall/base-shield", vanillaRule("s", { base: "s", type: "ShieldWall" }).workingOnly === true && vanillaRule("s", { base: "s", type: "BaseShield" }).workingOnly === true);
+  check("workingOnly：GenericCrafter=false", vanillaRule("kiln").workingOnly === false);
+
+  // (h) vanilla 类型表（gen_vanilla_blocks.py 生成）
+  check("VANILLA_BLOCKS conveyor=Conveyor", VANILLA_BLOCKS.conveyor.type === "Conveyor" && VANILLA_BLOCKS.conveyor.size === 1);
+  check("VANILLA_BLOCKS mass-driver size3/range440", VANILLA_BLOCKS["mass-driver"].size === 3 && VANILLA_BLOCKS["mass-driver"].range === 440);
+  check("VANILLA_BLOCKS 覆盖 >300 方块", Object.keys(VANILLA_BLOCKS).length > 300, Object.keys(VANILLA_BLOCKS).length);
+  check("typeOfBlock/sizeOfBlock", typeOfBlock("phase-conduit") === "LiquidBridge" && sizeOfBlock("blast-drill") === 4);
+  check("hasTypeRule", hasTypeRule("conveyor") === true && hasTypeRule("x", { type: "NoSuchType" }) === false);
+
+  // (i) 回归：titanium-conveyor 区域 + 规则驱动渲染（缺本体图也能画）
+  check("回归：titanium-conveyor regions", JSON.stringify(vanillaRule("titanium-conveyor").regions(0)) === JSON.stringify(["titanium-conveyor-0-0"]));
+  {
+    const W = TILE;
+    const mk = (r, g, b, a) => {
+      const rgba = new Uint8ClampedArray(W * W * 4);
+      for (let i = 0; i < W * W; i++) {
+        rgba[i * 4] = r;
+        rgba[i * 4 + 1] = g;
+        rgba[i * 4 + 2] = b;
+        rgba[i * 4 + 3] = a;
+      }
+      return { w: W, h: W, size: 1, rgba, placeholder: false };
+    };
+    const schem = {
+      width: 1,
+      height: 1,
+      tiles: [{ block: "titanium-conveyor", x: 0, y: 0, rot: 1, config_type: "null", config: null }],
+    };
+    // 只有变体贴图，没有本体图：规则应解析到 titanium-conveyor-0-0
+    const res = renderSchematic(schem, { "titanium-conveyor-0-0": mk(7, 8, 9, 255) }, { scale: 1, pad: 0, transparent: true });
+    check("回归：titanium-conveyor 规则渲染", res.rgba[0] === 7 && res.rgba[1] === 8 && res.rgba[2] === 9, [res.rgba[0], res.rgba[1], res.rgba[2]].join(","));
+  }
+
+  // (j) 回归：conduit/duct 双层 + unloader 中心色（规则路径）
+  {
+    const W = TILE;
+    const mk = (r, g, b, a) => {
+      const rgba = new Uint8ClampedArray(W * W * 4);
+      for (let i = 0; i < W * W; i++) {
+        rgba[i * 4] = r;
+        rgba[i * 4 + 1] = g;
+        rgba[i * 4 + 2] = b;
+        rgba[i * 4 + 3] = a;
+      }
+      return { w: W, h: W, size: 1, rgba, placeholder: false };
+    };
+    // 底层 conduit-bottom 红，顶层 conduit-top-0 绿（不透明）→ 顶层覆盖
+    const cond = renderSchematic(
+      { width: 1, height: 1, tiles: [{ block: "conduit", x: 0, y: 0, rot: 0, config_type: "null", config: null }] },
+      { "conduit-bottom": mk(200, 0, 0, 255), "conduit-top-0": mk(0, 200, 0, 255) },
+      { scale: 1, pad: 0, transparent: true }
+    );
+    check("回归：conduit 双层（top 覆盖）", cond.rgba[0] === 0 && cond.rgba[1] === 200 && cond.rgba[2] === 0, [cond.rgba[0], cond.rgba[1], cond.rgba[2]].join(","));
+    const duct = renderSchematic(
+      { width: 1, height: 1, tiles: [{ block: "duct", x: 0, y: 0, rot: 0, config_type: "null", config: null }] },
+      { "duct-bottom": mk(200, 0, 0, 255), "duct-top-0": mk(0, 0, 200, 255) },
+      { scale: 1, pad: 0, transparent: true }
+    );
+    check("回归：duct 双层（top 覆盖）", duct.rgba[0] === 0 && duct.rgba[1] === 0 && duct.rgba[2] === 200, [duct.rgba[0], duct.rgba[1], duct.rgba[2]].join(","));
+
+    const titanium = CONTENT_COLORS.titanium;
+    const unl = renderSchematic(
+      { width: 1, height: 1, tiles: [{ block: "unloader", x: 0, y: 0, rot: 0, config_type: "content", config: "titanium" }] },
+      { unloader: mk(0, 0, 0, 0), "unloader-center": mk(255, 255, 255, 255) },
+      { scale: 1, pad: 0, transparent: true }
+    );
+    check(
+      "回归：unloader 中心色（titanium）",
+      unl.rgba[0] === titanium[0] && unl.rgba[1] === titanium[1] && unl.rgba[2] === titanium[2],
+      [unl.rgba[0], unl.rgba[1], unl.rgba[2]].join(",")
+    );
+  }
+
+  // (k) staticLayerNames：规则 → vanilla LAYERS → 默认；模组注入优先
+  check("staticLayerNames conveyor", JSON.stringify(staticLayerNames("conveyor", 0)) === JSON.stringify(["conveyor-0-0"]));
+  check("staticLayerNames liquid-tank 回退 LAYERS", JSON.stringify(staticLayerNames("liquid-tank", 0)) === JSON.stringify(["liquid-tank-bottom", "liquid-tank"]));
+  check("staticLayerNames kiln 回退 LAYERS", JSON.stringify(staticLayerNames("kiln", 0)) === JSON.stringify(["kiln", "kiln-top"]));
+  setModBlockDefs(new Map([["m-belt", { base: "m-belt", type: "Conveyor" }]]));
+  check("staticLayerNames 模组无 drawer 走规则", JSON.stringify(staticLayerNames("m-belt", 0)) === JSON.stringify(["m-belt-0-0"]));
+  setModLayers({ "m-belt": ["m-belt", "m-belt-top"] });
+  check("staticLayerNames 模组 drawer 优先", JSON.stringify(staticLayerNames("m-belt", 0)) === JSON.stringify(["m-belt", "m-belt-top"]));
+  setModLayers({});
+  setModBlockDefs(new Map());
+}
+
+// -----------------------------------------------------------------------------
 // 9. 镜像源切换 / 超时 / 缓存（注入 mock fetch 与 mock Cache Storage）
 // -----------------------------------------------------------------------------
 async function testNet() {
@@ -1756,6 +1983,7 @@ async function main() {
   await testFileInput();
   testConfigRender();
   testDrawerLayers();
+  testRenderRules();
   await testV0();
   await testNet();
 

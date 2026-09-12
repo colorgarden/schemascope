@@ -11,8 +11,6 @@ import {
   TILE,
   LAYERS,
   OUTLINE_ICON,
-  CONFIG_UNDERLAY,
-  CONFIG_OVERLAY,
   CONTENT_COLORS,
   POWER_BLOCKS,
   POWER_LASER_COLOR,
@@ -23,7 +21,15 @@ import {
   BRIDGE_RANGE,
   BRIDGE_WIDTH,
   BRIDGE_OPACITY,
-} from "./data.js?v=20260913c";
+} from "./data.js?v=20260913d";
+import {
+  vanillaRule,
+  rangeOfBlock,
+  isBridgeType as ruleIsBridgeType,
+  isMassDriverType as ruleIsMassDriverType,
+  isBridgeBlock as ruleIsBridgeBlock,
+  configKindOf,
+} from "./render_rules.js?v=20260913d";
 
 // 模组方块的多层启发式（仅当 vanilla LAYERS 未定义该块时使用）
 let MOD_LAYERS = {};
@@ -31,6 +37,29 @@ let MOD_LAYERS = {};
 /** 注入模组多层表（app.js 在模组变化时调用；不会覆盖 vanilla 的 LAYERS）。 */
 export function setModLayers(map) {
   MOD_LAYERS = map || {};
+}
+
+// 模组方块定义（name -> def，含 type/range/base），供类型规则表查询。
+let MOD_DEFS = new Map();
+
+/** 注入模组方块定义（app.js 在模组变化时调用）。 */
+export function setModBlockDefs(map) {
+  MOD_DEFS = toMap(map);
+}
+
+/**
+ * 方块静态图层名解析（渲染与预加载共用，规则优先）：
+ *   模组 drawer 层（MOD_LAYERS） → 类型规则 regions(rot) → vanilla LAYERS → [block]
+ * regions 返回 null 的类型（drawer 自定义，如 GenericCrafter/LiquidRouter）会回退 LAYERS。
+ */
+export function staticLayerNames(block, rot) {
+  if (MOD_LAYERS[block]) return MOD_LAYERS[block];
+  const rule = vanillaRule(block, MOD_DEFS.get(block));
+  if (rule && typeof rule.regions === "function") {
+    const list = rule.regions(rot || 0);
+    if (list && list.length) return list;
+  }
+  return LAYERS[block] || [block];
 }
 
 // 模组桥（type 以 "Bridge" 结尾）：name -> { range, width }
@@ -111,12 +140,12 @@ function lerpColor(a, b, t) {
 
 /** 桥类型判定：type 以 "Bridge" 结尾（ItemBridge/LiquidBridge/BufferedItemBridge/DirectionalBridge 等）。 */
 export function isBridgeType(type) {
-  return typeof type === "string" && type.length > 0 && type.endsWith("Bridge");
+  return ruleIsBridgeType(type);
 }
 
 /** 质量驱动器类型判定。 */
 export function isMassDriverType(type) {
-  return type === "MassDriver" || (typeof type === "string" && type.endsWith("MassDriver"));
+  return ruleIsMassDriverType(type);
 }
 
 /** 是否为模组桥（vanilla 集合之外）。 */
@@ -124,10 +153,21 @@ export function isModBridge(name) {
   return MOD_BRIDGES.has(name);
 }
 
-/** 桥配对范围：模组 range 优先，其次 vanilla BRIDGE_RANGE，最后 4。 */
+/** 该方块是否参与桥连接（类型规则优先，兼容 legacy 名单与模组注入）。 */
+export function isBridgeBlockName(name) {
+  return (
+    MOD_BRIDGES.has(name) ||
+    BRIDGE_BLOCKS.has(name) ||
+    ruleIsBridgeBlock(name, MOD_DEFS.get(name))
+  );
+}
+
+/** 桥配对范围：模组 range 优先，其次类型/vanilla range，最后 legacy BRIDGE_RANGE/4。 */
 export function bridgeRangeOf(name) {
   const m = MOD_BRIDGES.get(name);
   if (m && m.range !== undefined && m.range !== null) return m.range;
+  const r = rangeOfBlock(name, MOD_DEFS.get(name));
+  if (r !== undefined) return r;
   return BRIDGE_RANGE[name] !== undefined ? BRIDGE_RANGE[name] : 4;
 }
 
@@ -621,7 +661,8 @@ export function padAndScale(buf, cw, ch, scale, pad, transparent, bgtex) {
 function drawBlockSpriteLayers(buf, cw, ch, t, e, sprites, layers) {
   const cx = e.px + Math.floor((e.size * TILE) / 2);
   const cy = e.py + Math.floor((e.size * TILE) / 2);
-  const names = layers ? LAYERS[t.block] || MOD_LAYERS[t.block] || [t.block] : [t.block];
+  const names = layers ? staticLayerNames(t.block, t.rot) : [t.block];
+  const ruleOutline = vanillaRule(t.block, MOD_DEFS.get(t.block)).outline;
   for (let li = 0; li < names.length; li++) {
     const item = names[li];
     const lname = typeof item === "string" ? item : item && item.name;
@@ -635,8 +676,8 @@ function drawBlockSpriteLayers(buf, cw, ch, t, e, sprites, layers) {
     const sw = sp.w;
     const sh = sp.h;
     let rgba = sp.rgba;
-    // outlineIcon 方块的顶层图标贴图先加描边（vanilla ∪ 模组）
-    const outline = OUTLINE_ICON[t.block] || MOD_OUTLINE.get(t.block);
+    // outlineIcon 方块的顶层图标贴图先加描边（规则表 ∪ vanilla ∪ 模组）
+    const outline = ruleOutline || OUTLINE_ICON[t.block] || MOD_OUTLINE.get(t.block);
     if (li === names.length - 1 && outline) {
       const [ocol, orad] = outline;
       rgba = makeOutline(rgba, sw, sh, ocol, orad);
@@ -668,8 +709,8 @@ function drawConfigUnderlay(buf, cw, ch, t, e, sprites) {
 /** 配置覆盖层（在 sprite 层之后）。
  *  centerTint：有内容 → `<block>-center` 乘内容色。
  *  liquidSource：source-bottom → (null?cross:fluid 着色铺满) → 重画该方块 sprite（最上层）。 */
-function drawConfigOverlay(buf, cw, ch, t, e, sprites, layers) {
-  const kind = CONFIG_OVERLAY[t.block];
+function drawConfigOverlay(buf, cw, ch, t, e, sprites, layers, kind) {
+  kind = kind || configKindOf(t.block, MOD_DEFS.get(t.block));
   const px = e.size * TILE;
   const cfg = t.config;
   if (kind === "centerTint") {
@@ -780,7 +821,7 @@ export function drawPowerLasers(buf, cw, ch, layout, sprites, laserAlpha = POWER
 /** 计算桥连接对（对应 _bridge_pairs）。返回 [[e, te], ...]。 */
 export function bridgePairs(entries) {
   const key = (e) => `${e.tile.x},${e.tile.y}`;
-  const isBridge = (b) => BRIDGE_BLOCKS.has(b) || MOD_BRIDGES.has(b);
+  const isBridge = (b) => isBridgeBlockName(b);
   const bridges = entries.filter((e) => isBridge(e.tile.block));
   const lookup = new Map();
   for (const e of bridges) lookup.set(key(e), e);
@@ -914,12 +955,13 @@ export function renderSchematic(schem, sprites, opts = {}) {
   // ---- 第一遍：配置底层 → 方块图标（多层，按中心对齐） → 配置覆盖层 ----
   for (const e of layout.entries) {
     const t = e.tile;
-    if (configIcons && CONFIG_UNDERLAY[t.block]) {
+    const kind = configKindOf(t.block, MOD_DEFS.get(t.block));
+    if (configIcons && kind === "item") {
       drawConfigUnderlay(buf, cw, ch, t, e, sprites);
     }
     drawBlockSpriteLayers(buf, cw, ch, t, e, sprites, layers);
-    if (configIcons && CONFIG_OVERLAY[t.block]) {
-      drawConfigOverlay(buf, cw, ch, t, e, sprites, layers);
+    if (configIcons && (kind === "centerTint" || kind === "liquidSource")) {
+      drawConfigOverlay(buf, cw, ch, t, e, sprites, layers, kind);
     }
   }
 
