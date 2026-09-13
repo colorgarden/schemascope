@@ -1,11 +1,11 @@
 // =============================================================================
 // parser.js —— 蓝图容器解析 + TypeIO + contentMap + 处理器逻辑提取
 //
-// 逐函数对照 msch.py：
+// 主要结构：
 //   class Reader / read_object() / parse_content_map() / make_resolver()
 //   load_container() / parse_schematic() / extract_logic()
 //
-// 与 Python 版本的一处差异：解压是异步的（浏览器 DecompressionStream 是异步
+// 解压是异步的（浏览器 DecompressionStream 是异步
 // API），因此 load_container / parse_schematic / extract_logic 均返回 Promise。
 // =============================================================================
 
@@ -512,7 +512,7 @@ function stringToBytes(str) {
 
 /**
  * 读取输入（Base64 文本 / 二进制字节 / ArrayBuffer），返回
- * { version, body }。与 msch.py load_container 行为一致。
+ * { version, body }。
  */
 export async function loadContainer(input) {
   let data;
@@ -560,7 +560,7 @@ function _textToAscii(str) {
 }
 
 /**
- * 解析蓝图，返回结构化对象（字段命名与 msch.py build_json 对齐）。
+ * 解析蓝图，返回结构化对象。
  */
 export async function parseSchematic(input) {
   const { version, body } = await loadContainer(input);

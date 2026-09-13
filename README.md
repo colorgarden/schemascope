@@ -2,8 +2,7 @@
 
 纯前端静态网页实现：输入蓝图（Base64 或 `.msch` 文件）→ 浏览器内解析 →
 canvas 渲染（多层贴图、描边、电力激光、桥连接、原版背景全部保留）→
-点击处理器弹代码、悬停提示、图例、导出 PNG。与同项目的 Python 参考实现
-（`msch.py`，不包含在本仓库）功能保持一致。
+点击处理器弹代码、悬停提示、图例、导出 PNG。
 
 - 无需构建步骤、无需后端，vanilla JS + ES modules。
 - 可直接挂到 **GitHub Pages**，也可用 `python3 -m http.server` 本地打开。
@@ -23,8 +22,8 @@ js/data.js            常量与中文映射（TILE/LAYERS/BLOCK_CN/CONTENT_CN/�
 js/cn_data.js         全量官方中文名（由 bundle_zh_CN.properties 生成）
 js/inflate.js         zlib 解压封装（DecompressionStream）
 js/parser.js          容器解析 + TypeIO + contentMap + 处理器逻辑提取
-js/render.js          渲染器（与同项目 Python 版 msch.py 像素级一致）
-js/blending.js        邻居拼接 Autotiler（传送带/管道/导管，纯函数可单测）
+js/render.js          渲染器（画布缓冲渲染）
+js/blending.js        邻居拼接 Autotiler（纯函数）
 js/vanilla_blocks.js  官方方块类型/属性表
 js/vanilla_turrets.js 官方炮塔部件表
 js/icons.js           PUA 内容图标解析 + richText 富文本
@@ -32,10 +31,10 @@ js/icons_data.js      PUA 码点表（由 icons.properties 生成）
 js/prefetch.js        输入哈希 + 预加载管理器
 js/cache.js           Cache Storage 持久化缓存（v2 + 规范化键 + SWR/TTL）
 js/sources.js         Mindustry 镜像源（手动选择 + 超时 + 自动切换）
-js/zip.js             纯 JS zip 读取器（STORED/DEFLATE，可单测）
-js/mod.js             模组 zip 解析（方块/贴图/item/bundle，可单测）
-js/names.js           方块显示名（bundle > JSON name > BLOCK_CN，可单测）
-js/history.js         本地历史记录（容量策略纯函数，可单测）
+js/zip.js             纯 JS zip 读取器
+js/mod.js             模组 zip 解析
+js/names.js           方块显示名
+js/history.js         本地历史记录（纯函数）
 js/requirements.js    蓝图总耗材计算
 js/requirements_data.js 方块耗材表 BLOCK_REQUIREMENTS + 物品中文名 ITEM_CN
 js/main.js            入口 UI 逻辑（入口带 ?v=<VER> 查询做缓存穿透）
@@ -81,7 +80,7 @@ package.json          {"type":"module"}
 要完全离线（首次加载更快、无网络也能用），把贴图缓存目录一并上传：
 
 1. 在仓库根目录新建 `assets/sprites/`。
-2. 把同项目 Python 版（`msch.py`）运行后生成的 `sprites/*.png`（或从 Mindustry 仓库下载的贴图，
+2. 把贴图 PNG（或从 Mindustry 仓库下载，
    **文件名必须是方块/贴图名 + `.png`**，例如 `mass-driver.png`、`laser.png`、
    `schematic-background.png`）全部放入 `assets/sprites/`。
 3. 重新 push。页面会自动优先使用本地贴图。

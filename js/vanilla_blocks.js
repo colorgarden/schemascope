@@ -1,7 +1,5 @@
 // =============================================================================
-// vanilla_blocks.js —— 由 tools/gen_vanilla_blocks.py 从 Mindustry v159.7
-//   Blocks.java 自动生成，请勿手改；复跑：
-//   python3 tools/gen_vanilla_blocks.py <Blocks.java>
+// vanilla_blocks.js —— 官方方块静态数据表（从 Mindustry v159.7 Blocks.java 生成，请勿手改）
 //
 // 字段：方块内部名 -> { type: 官方 Java 类名, size: 占地, range?: 连接范围,
 //   powerProduction?: 每刻发电（PowerGenerator.getDisplayedPowerProduction()，

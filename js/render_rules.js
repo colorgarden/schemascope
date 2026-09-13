@@ -7,7 +7,7 @@
 // 名（type）查规则」：
 //   1. 模组方块优先用 JSON 的 type/drawer/range（drawer 走 mod.js 的
 //      drawerStaticLayers，仍由 setModLayers 注入）；无 drawer 时按同名 type。
-//   2. vanilla 方块用 tools/gen_vanilla_blocks.py 从 Blocks.java 生成的
+//   2. vanilla 方块用从官方 Blocks.java 生成的
 //      vanilla_blocks.js（方块名 → type/size/range），再套本文件的类型规则。
 //
 // 本模块为纯函数（不依赖浏览器 API），可在 Node 下单测。
@@ -381,7 +381,7 @@ export function hasTypeRule(blockName, def) {
 // 这些函数是 js/blending.js 与 js/render.js 共用的事实来源：
 //   - AUTOTILER_TYPES：官方 implements Autotiler 的类（Conveyor/Duct/Conduit/StackConveyor）
 //   - TURRET_TYPES   ：官方 drawer = DrawTurret 的类（Turret 及其子类，不含 BaseTurret）
-//   - VANILLA_TURRETS：tools/gen_vanilla_blocks.py 生成的炮塔部件静态几何
+//   - VANILLA_TURRETS：官方炮塔部件静态几何表
 // -----------------------------------------------------------------------------
 
 export const AUTOTILER_TYPES = new Set([

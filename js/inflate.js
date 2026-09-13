@@ -1,5 +1,5 @@
 // =============================================================================
-// inflate.js —— zlib 解压封装（对应 msch.py 里的 zlib.decompress）
+// inflate.js —— zlib 解压封装
 //
 // 优先使用浏览器原生 DecompressionStream('deflate')（RFC1950 zlib 格式，
 // 与 Mindustry 蓝图 / 处理器 byteArray 的压缩格式一致）。

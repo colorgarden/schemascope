@@ -1,6 +1,6 @@
 // =============================================================================
 // app.js —— UI 逻辑（输入 → 解析 → 贴图加载 → 渲染 → 交互 → 导出）
-// 对照 msch.py 的 build_html / HTML_TEMPLATE（热区、处理器按钮、图例、弹窗）
+
 // =============================================================================
 
 import {
@@ -123,7 +123,7 @@ async function loadSpriteIndex() {
   }
 }
 
-/** 对照 msch.py _sprite_rel_path：blocks → items → aux(索引) → aux(兜底表)。 */
+/** 贴图相对路径解析：blocks → items → aux(索引) → aux(兜底表)。 */
 function spriteRelPath(name) {
   const tables = [spriteIndex.blocks, spriteIndex.items, spriteIndex.aux, AUX_PATHS];
   for (const table of tables) {
@@ -684,7 +684,7 @@ async function loadAllSprites(needed, onProgress) {
 }
 
 // -----------------------------------------------------------------------------
-// 配置摘要 / 中文名 / 作者（对照 msch.py config_summary/_find_author/_collect_legend）
+// 配置摘要 / 中文名 / 作者
 // -----------------------------------------------------------------------------
 
 function stripTags(text) {

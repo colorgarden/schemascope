@@ -1,7 +1,7 @@
 // =============================================================================
-// render.js —— 渲染器（逐函数对照 msch.py 第 8 节「渲染」）
+// render.js —— 渲染器（纯字节缓冲 + 最近邻，可在 Node 单测）
 //
-// 与 Python 版本一致：纯字节缓冲 + 最近邻，不依赖浏览器 API，方便在 Node 里
+// 纯字节缓冲 + 最近邻，不依赖浏览器 API，方便在 Node 里
 // 用假 ImageData 缓冲做单测。浏览器侧只需把最终 RGBA 放入 ImageData 即可。
 //
 // sprite 结构：{ w, h, size, rgba: Uint8ClampedArray, placeholder }
@@ -200,11 +200,11 @@ export function bridgeWidthOf(name) {
 }
 
 // -----------------------------------------------------------------------------
-// 数值辅助（对齐 Python 的 // 与 int()/round() 语义）
+// 数值辅助（整数除 / 取整 / 四舍五入语义）
 // -----------------------------------------------------------------------------
 const ifloor = (x) => Math.floor(x);
 const trunc = (x) => Math.trunc(x);
-// Python round()：四舍六入五成双
+// 四舍六入五成双
 function pyRound(x) {
   const f = Math.floor(x);
   const d = x - f;

@@ -1,7 +1,5 @@
 // =============================================================================
-// vanilla_turrets.js —— 由 tools/gen_vanilla_blocks.py 从 Mindustry v159.7
-//   Blocks.java 自动生成，请勿手改；复跑：
-//   python3 tools/gen_vanilla_blocks.py <Blocks.java>
+// vanilla_turrets.js —— 官方炮塔部件静态表（从 Mindustry v159.7 Blocks.java 生成，请勿手改）
 //
 // 仅收录显式声明 `drawer = new DrawTurret(...)` 的炮塔（basePrefix 非空或有部件）。
 // 字段：方块内部名 -> { basePrefix: string, parts: [
