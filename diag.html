@@ -16,6 +16,7 @@
 <h3>SchemaScope 诊断</h3>
 <div>脚本版本：<b id="ver">(未执行)</b></div>
 <div>数据表：<b id="tbl">(未执行)</b></div>
+<div id="probe" style="color:#9da7b8;font-size:12px">表探针：(未执行)</div>
 <textarea id="b64" placeholder="在此粘贴蓝图 Base64（可留空，留空只显示上两行）"></textarea>
 <button id="go">解析诊断</button>
 <pre id="out">等待…</pre>
@@ -23,6 +24,8 @@
 import { VANILLA_BLOCKS } from "./js/vanilla_blocks.js?v=20260913o";
 import { parseSchematic } from "./js/parser.js?v=20260913o";
 import { computePower, computeItemRates } from "./js/requirements.js?v=20260913o";
+import { BLOCK_REQUIREMENTS, ITEM_CN } from "./js/requirements_data.js?v=20260913o";
+import { CN_ITEMS } from "./js/cn_data.js?v=20260913o";
 
 document.getElementById("ver").textContent = "20260913o";
 const probe = VANILLA_BLOCKS["silicon-smelter"] || {};
@@ -30,6 +33,13 @@ const fields = ["powerUsage", "craftTime", "consumeItems", "outputItems"].filter
 const tbl = document.getElementById("tbl");
 tbl.className = fields.length >= 3 ? "ok" : "bad";
 tbl.textContent = "silicon-smelter 已含字段：" + (fields.length ? fields.join(", ") : "（无 → 数据表是旧缓存！）");
+document.getElementById("probe").textContent =
+  "表探针：" +
+  JSON.stringify({
+    "silicon-smelter": BLOCK_REQUIREMENTS["silicon-smelter"],
+    "item-source": BLOCK_REQUIREMENTS["item-source"],
+    "titanium 中文名": ITEM_CN["titanium"] || CN_ITEMS["titanium"],
+  });
 
 document.getElementById("go").onclick = async () => {
   const out = document.getElementById("out");
@@ -39,10 +49,21 @@ document.getElementById("go").onclick = async () => {
     const s = await parseSchematic(text);
     const p = computePower(s.tiles, VANILLA_BLOCKS);
     const r = computeItemRates(s.tiles, VANILLA_BLOCKS);
+    // 建造耗材逐项（含中文名）
+    const req = new Map();
+    for (const t of s.tiles) {
+      for (const [item, amt] of BLOCK_REQUIREMENTS[t.block] || []) {
+        req.set(item, (req.get(item) || 0) + amt);
+      }
+    }
+    const reqList = [...req.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([item, n]) => `${ITEM_CN[item] || CN_ITEMS[item] || item}×${n}`);
     out.textContent = JSON.stringify({
       尺寸: s.width + "x" + s.height, 方块数: s.tiles.length,
       电力每秒: { 产出: p.production * 60, 消耗: p.consumption * 60 },
       运行产出: r.produce, 运行消耗: r.consume, 弹药: [...r.ammo],
+      建造耗材: reqList,
     }, null, 1);
   } catch (e) {
     out.textContent = "错误：" + (e && e.message ? e.message : e);
