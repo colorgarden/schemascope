@@ -4,7 +4,7 @@
 // =============================================================================
 
 // 全量官方中文名（由 bundle_zh_CN.properties 生成）
-import { CN_BLOCKS, CN_ITEMS, CN_LIQUIDS } from "./cn_data.js?v=20260913q";
+import { CN_BLOCKS, CN_ITEMS, CN_LIQUIDS } from "./cn_data.js?v=20260913r";
 
 // CDN 前缀：只用 jsdelivr 的 @master（始终取最新贴图，允许跨域）
 export const CDN_PREFIX = "https://cdn.jsdelivr.net/gh/Anuken/Mindustry@master/";
@@ -384,6 +384,9 @@ export const BRIDGE_BLOCKS = new Set([
   "reinforced-bridge",
 ]);
 export const BRIDGE_RANGE = { "phase-conveyor": 12, "phase-conduit": 12, "phase-bridge": 12 };
+
+/** 不绘制沿途箭头的桥（用户反馈：原版普通传送带桥/导管桥在游戏里不显示箭头）。 */
+export const BRIDGE_NO_ARROW = new Set(["bridge-conveyor", "bridge-conduit", "bridge"]);
 
 // 桥的沿途箭头（官方 ItemBridge：arrowSpacing=4 世界单位=16px、arrowOffset=2 单位=8px）
 export const BRIDGE_ARROW_SPACING = 16;

@@ -22,9 +22,10 @@ import {
   BRIDGE_WIDTH,
   BRIDGE_OPACITY,
   BRIDGE_ARROW_SPACING,
+  BRIDGE_NO_ARROW,
   BRIDGE_ARROW_OFFSET,
   TEAM_PALETTE,
-} from "./data.js?v=20260913q";
+} from "./data.js?v=20260913r";
 import {
   vanillaRule,
   rangeOfBlock,
@@ -44,8 +45,8 @@ import {
   sizeOfBlock,
   baseOf,
   isRotatableBlock,
-} from "./render_rules.js?v=20260913q";
-import { makeTileWorld, buildBlending } from "./blending.js?v=20260913q";
+} from "./render_rules.js?v=20260913r";
+import { makeTileWorld, buildBlending } from "./blending.js?v=20260913r";
 
 /** 仅取自有属性，避免方块名（如 "constructor"）撞上 Object.prototype 上的同名属性。 */
 function own(obj, key) {
@@ -1227,7 +1228,8 @@ export function drawBridges(buf, cw, ch, layout, sprites, bridgeOpacity = BRIDGE
     }
 
     // 沿途周期箭头（官方：dist=max(|Δx|,|Δy|)-1 格；间距 4 单位=16px，偏移 2 单位=8px）
-    const arrow = getSprite(sprites, a.tile.block + "-arrow", true);
+    // 普通传送带桥/导管桥按用户要求不画箭头（原版观感）
+    const arrow = BRIDGE_NO_ARROW.has(a.tile.block) ? null : getSprite(sprites, a.tile.block + "-arrow", true);
     if (arrow) {
       const tiles = Math.max(Math.abs(b.tile.x - a.tile.x), Math.abs(b.tile.y - a.tile.y));
       const count = Math.max(0, Math.floor(((tiles - 1) * TILE) / BRIDGE_ARROW_SPACING));
