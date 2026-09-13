@@ -10,23 +10,23 @@ import {
   AUX_PATHS,
   DEFAULT_SCALE,
   DEFAULT_PAD,
-} from "./data.js?v=20260913n";
-import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913n";
-import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913n";
-import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock, isAutotilerBlock, isTurretBlock, isFactoryBlock, isReconstructorBlock, factorySpriteNames, reconstructorSpriteNames, sizeOfBlock, turretSpriteNames, autotilerSpriteNames, selectMissingSprites } from "./render_rules.js?v=20260913n";
-import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260913n";
-import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913n";
-import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913n";
-import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913n";
-import { requirementsList, computePower, computeItemRates, autoFixed } from "./requirements.js?v=20260913n";
-import { BLOCK_REQUIREMENTS, ITEM_CN } from "./requirements_data.js?v=20260913n";
-import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260913n";
-import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913n";
-import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913n";
-import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913n";
+} from "./data.js?v=20260913o";
+import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913o";
+import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913o";
+import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock, isAutotilerBlock, isTurretBlock, isFactoryBlock, isReconstructorBlock, factorySpriteNames, reconstructorSpriteNames, sizeOfBlock, turretSpriteNames, autotilerSpriteNames, selectMissingSprites } from "./render_rules.js?v=20260913o";
+import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260913o";
+import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913o";
+import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913o";
+import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913o";
+import { requirementsList, computePower, computeItemRates, autoFixed } from "./requirements.js?v=20260913o";
+import { BLOCK_REQUIREMENTS, ITEM_CN } from "./requirements_data.js?v=20260913o";
+import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260913o";
+import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913o";
+import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913o";
+import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913o";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260913n";
+const APP_VERSION = "20260913o";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -1868,6 +1868,24 @@ if (els.clearCache) {
 // 初始化
 (async function init() {
   console.info("SchemaScope v" + APP_VERSION);
+  // 旧缓存自检：vanilla_blocks.js 若是旧缓存（缺少运行速率字段），强制刷新一次（防"模组正常、原版无运行数据"）
+  try {
+    const probe = VANILLA_BLOCKS["silicon-smelter"];
+    if (probe && probe.craftTime === undefined && probe.consumeItems === undefined) {
+      const k = "msch-stale-reload";
+      if (!sessionStorage.getItem(k)) {
+        sessionStorage.setItem(k, "1");
+        const u = new URL(location.href);
+        u.searchParams.set("fresh", Date.now().toString(36));
+        location.replace(u.toString());
+        return;
+      }
+    } else {
+      sessionStorage.removeItem("msch-stale-reload");
+    }
+  } catch (e) {
+    // 忽略
+  }
   // 页脚版本由 JS 注入：能显示即证明新入口脚本确实已加载运行
   const footerVer = document.getElementById("footer-ver");
   if (footerVer) footerVer.textContent = "v" + APP_VERSION;

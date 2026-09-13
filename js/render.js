@@ -24,7 +24,7 @@ import {
   BRIDGE_ARROW_SPACING,
   BRIDGE_ARROW_OFFSET,
   TEAM_PALETTE,
-} from "./data.js?v=20260913n";
+} from "./data.js?v=20260913o";
 import {
   vanillaRule,
   rangeOfBlock,
@@ -44,8 +44,8 @@ import {
   sizeOfBlock,
   baseOf,
   isRotatableBlock,
-} from "./render_rules.js?v=20260913n";
-import { makeTileWorld, buildBlending } from "./blending.js?v=20260913n";
+} from "./render_rules.js?v=20260913o";
+import { makeTileWorld, buildBlending } from "./blending.js?v=20260913o";
 
 /** 仅取自有属性，避免方块名（如 "constructor"）撞上 Object.prototype 上的同名属性。 */
 function own(obj, key) {
