@@ -25,18 +25,18 @@ js/inflate.js         zlib 解压封装（DecompressionStream）
 js/parser.js          容器解析 + TypeIO + contentMap + 处理器逻辑提取
 js/render.js          渲染器（与同项目 Python 版 msch.py 像素级一致）
 js/blending.js        邻居拼接 Autotiler（传送带/管道/导管，纯函数可单测）
-js/vanilla_blocks.js  官方方块类型/属性表（开发侧脚本生成，不随仓库发布）
-js/vanilla_turrets.js 官方炮塔 DrawTurret/RegionPart 部件表（同上生成）
+js/vanilla_blocks.js  官方方块类型/属性表
+js/vanilla_turrets.js 官方炮塔部件表
 js/icons.js           PUA 内容图标解析 + richText 富文本
 js/icons_data.js      PUA 码点表（由 icons.properties 生成）
-js/prefetch.js        输入哈希 + 预加载管理器（可单测）
+js/prefetch.js        输入哈希 + 预加载管理器
 js/cache.js           Cache Storage 持久化缓存（v2 + 规范化键 + SWR/TTL）
 js/sources.js         Mindustry 镜像源（手动选择 + 超时 + 自动切换）
 js/zip.js             纯 JS zip 读取器（STORED/DEFLATE，可单测）
 js/mod.js             模组 zip 解析（方块/贴图/item/bundle，可单测）
 js/names.js           方块显示名（bundle > JSON name > BLOCK_CN，可单测）
 js/history.js         本地历史记录（容量策略纯函数，可单测）
-js/requirements.js    蓝图总耗材计算（可单测）
+js/requirements.js    蓝图总耗材计算
 js/requirements_data.js 方块耗材表 BLOCK_REQUIREMENTS + 物品中文名 ITEM_CN
 js/main.js            入口 UI 逻辑（入口带 ?v=<VER> 查询做缓存穿透）
 sprite_index.json     贴图名 → 相对路径索引（blocks/items/aux/all）
@@ -236,8 +236,8 @@ UI emoji → 去掉。
   桥 `-bridge`/`-arrow` 等不存在的层）缺失属正常，不再误报（`selectMissingSprites`）。
   同时收集贴图时对 vanilla 只请求 `sprite_index.json` 中确实存在的可选层，避免无谓的
   CDN 404；规范底座缺失时按 `spriteVariantCandidates`（如传送带 `<名>-0-0`、墙壁 `<名>1`）
-  解析。审查已固化为测试：遍历全部原版方块断言「无必需贴图缺失 / 无未识别方块 / 无可选层
-  空请求」（环境/旧版方块除外）。另修复 `constructor` 等方块名撞上 `Object.prototype`
+  解析。全量原版方块保证「无必需贴图缺失 / 无未识别方块 / 无可选层空请求」
+  （环境/旧版方块除外）。另修复 `constructor` 等方块名撞上 `Object.prototype`
   同名属性导致的层名错乱。
 - 模组变化后会清空内存贴图缓存并自动重渲染当前蓝图；未识别方块会在状态栏提示可能缺少的模组。
 
@@ -351,18 +351,6 @@ python3 -m http.server 8000
 
 直接双击 `index.html`（`file://`）也能打开界面，但浏览器会因同源策略拦截
 本地文件读取；请务必用上面的 `http.server` 方式预览。
-
-## 九、运行测试（开发侧，不随仓库发布）
-
-`test/` 与 `tools/` 为开发脚本，已从仓库移除并由 `.gitignore` 忽略，仅在本地工作区保留：
-
-```bash
-node --check js/*.js
-node test/parse_test.mjs
-```
-
-测试会读取本地样本与模组 zip（路径在文件顶部，可自行修改），覆盖解析/渲染/图标/模组/电力与物品速率等断言。
-需要 Node 18+（内置 `DecompressionStream`）。
 
 ## 十、浏览器要求
 
