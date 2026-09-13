@@ -21,8 +21,7 @@
 //   继承），对应官方 Block.drawDefaultPlanRegion 的旋转条件；通用渲染路径据此
 //   决定是否把蓝图 rot 施加到方块贴图上（见 render_rules.isRotatableBlock）。
 // =============================================================================
-export const VANILLA_BLOCKS = {
-  "additive-reconstructor": { type: "Reconstructor", size: 3, powerUsage: 3.0, consumeItems: [["silicon", 40], ["graphite", 40]], constructTime: 600.0 },
+export const VANILLA_BLOCKS = {  "additive-reconstructor": { type: "Reconstructor", size: 3, powerUsage: 3.0, consumeItems: [["silicon", 40], ["graphite", 40]], constructTime: 600.0 },
   "advanced-launch-pad": { type: "LaunchPad", size: 4, powerUsage: 8.0, flags: { hasItems: true, hasLiquids: true, outputsItems: false } },
   "afflict": { type: "PowerTurret", size: 4, range: 368, powerUsage: 5.0 },
   "air": { type: "AirBlock", size: 1 },
@@ -428,3 +427,49 @@ export const VANILLA_BLOCKS = {
   "yellow-stone-wall": { type: "StaticWall", size: 1 },
   "yellowcoral": { type: "SeaBush", size: 1 },
 };
+
+
+/**
+ * 模组对「原版方块」做部分重定义（同名 JSON）时：模组写了的字段优先，未写的字段继承原版。
+ * 仅当 modDef.base（或去掉模组前缀后的名字）命中原版方块名时生效，否则原样返回。
+ */
+export function patchVanillaDef(modDef, vanilla = VANILLA_BLOCKS) {
+  if (!modDef) return modDef;
+  const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  const name = own(vanilla, modDef.base) ? modDef.base : null;
+  const vb = name ? vanilla[name] : null;
+  if (!vb) return modDef;
+  return Object.assign({}, modDef, {
+    type: modDef.type && modDef.type !== "Block" ? modDef.type : vb.type || modDef.type,
+    // JSON 未写 size 时我们的解析默认给 1；对原版覆盖（尺寸通常 >1）按 1 视为未指定
+    size: modDef.size > 1 ? modDef.size : vb.size || modDef.size,
+  });
+}
+
+/** 同上：电力/物品速率字段的逐字段继承（模组优先、原版补齐）。 */
+export function patchVanillaRates(modDef, vanilla = VANILLA_BLOCKS) {
+  const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  const name = modDef && own(vanilla, modDef.base) ? modDef.base : null;
+  const vb = name ? vanilla[name] : null;
+  const has = (a) => Array.isArray(a) && a.length > 0;
+  const num = (cur, van) => (typeof cur === "number" && cur !== 0 ? cur : van || 0);
+  return {
+    powerProduction: num(modDef && modDef.powerProduction, vb && vb.powerProduction),
+    powerUsage: num(modDef && modDef.powerUsage, vb && vb.powerUsage),
+    consumeItems: has(modDef && modDef.consumeItems) ? modDef.consumeItems : (vb && vb.consumeItems) || [],
+    outputItems: has(modDef && modDef.outputItems) ? modDef.outputItems : (vb && vb.outputItems) || [],
+    craftTime: num(modDef && modDef.craftTime, vb && vb.craftTime),
+    itemDuration: num(modDef && modDef.itemDuration, vb && vb.itemDuration),
+    constructTime: num(modDef && modDef.constructTime, vb && vb.constructTime),
+  };
+}
+
+/** 同上：建造耗材的逐字段继承（模组写了 requirements 用它，否则用原版耗材表）。 */
+export function patchVanillaRequirements(modDef, reqTable) {
+  if (!modDef) return [];
+  const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  const has = (a) => Array.isArray(a) && a.length > 0;
+  if (has(modDef.requirements)) return modDef.requirements;
+  const name = own(reqTable, modDef.base) ? modDef.base : null;
+  return (name && reqTable[name]) || modDef.requirements || [];
+}

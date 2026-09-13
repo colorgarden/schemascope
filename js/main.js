@@ -10,23 +10,23 @@ import {
   AUX_PATHS,
   DEFAULT_SCALE,
   DEFAULT_PAD,
-} from "./data.js?v=20260913o";
-import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913o";
-import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913o";
-import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock, isAutotilerBlock, isTurretBlock, isFactoryBlock, isReconstructorBlock, factorySpriteNames, reconstructorSpriteNames, sizeOfBlock, turretSpriteNames, autotilerSpriteNames, selectMissingSprites } from "./render_rules.js?v=20260913o";
-import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260913o";
-import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913o";
-import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913o";
-import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913o";
-import { requirementsList, computePower, computeItemRates, autoFixed } from "./requirements.js?v=20260913o";
-import { BLOCK_REQUIREMENTS, ITEM_CN } from "./requirements_data.js?v=20260913o";
-import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260913o";
-import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913o";
-import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913o";
-import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913o";
+} from "./data.js?v=20260913p";
+import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913p";
+import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913p";
+import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock, isAutotilerBlock, isTurretBlock, isFactoryBlock, isReconstructorBlock, factorySpriteNames, reconstructorSpriteNames, sizeOfBlock, turretSpriteNames, autotilerSpriteNames, selectMissingSprites } from "./render_rules.js?v=20260913p";
+import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260913p";
+import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913p";
+import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913p";
+import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913p";
+import { requirementsList, computePower, computeItemRates, autoFixed } from "./requirements.js?v=20260913p";
+import { BLOCK_REQUIREMENTS, ITEM_CN } from "./requirements_data.js?v=20260913p";
+import { VANILLA_BLOCKS, patchVanillaDef, patchVanillaRates, patchVanillaRequirements } from "./vanilla_blocks.js?v=20260913p";
+import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913p";
+import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913p";
+import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913p";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260913o";
+const APP_VERSION = "20260913p";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -288,18 +288,12 @@ function rebuildModDerived() {
       if (!m.spritesOverride.has(k)) modNormalIndex.set(k, m);
     }
     // 方块尺寸 + 耗材 + type 分类（内部名与 base 都注册）
-    for (const [key, def] of m.blocks) {
+    for (const [key, rawDef] of m.blocks) {
+      // 模组重定义原版方块：模组字段优先、未写字段继承原版（逐字段 patch）
+      const def = patchVanillaDef(rawDef);
       modBlockSizes.set(key, def.size);
-      modRequirementsTable[key] = def.requirements;
-      modComputeTable[key] = {
-        powerProduction: def.powerProduction || 0,
-        powerUsage: def.powerUsage || 0,
-        consumeItems: def.consumeItems || [],
-        outputItems: def.outputItems || [],
-        craftTime: def.craftTime || 0,
-        itemDuration: def.itemDuration || 0,
-        constructTime: def.constructTime || 0,
-      };
+      modRequirementsTable[key] = patchVanillaRequirements(rawDef, BLOCK_REQUIREMENTS);
+      modComputeTable[key] = patchVanillaRates(rawDef);
       modDefs.set(key, def);
 
       // 桥：type 以 Bridge 结尾（ItemBridge/LiquidBridge/…）

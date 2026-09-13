@@ -9,8 +9,8 @@
 // API），因此 load_container / parse_schematic / extract_logic 均返回 Promise。
 // =============================================================================
 
-import { inflate } from "./inflate.js?v=20260913o";
-import { TYPE_NAMES, CONTENT_TYPE_LABEL } from "./data.js?v=20260913o";
+import { inflate } from "./inflate.js?v=20260913p";
+import { TYPE_NAMES, CONTENT_TYPE_LABEL } from "./data.js?v=20260913p";
 
 // -----------------------------------------------------------------------------
 // 2. 二进制读取器（大端序）
