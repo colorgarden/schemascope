@@ -24,7 +24,7 @@ import {
   BRIDGE_ARROW_SPACING,
   BRIDGE_ARROW_OFFSET,
   TEAM_PALETTE,
-} from "./data.js?v=20260913p";
+} from "./data.js?v=20260913q";
 import {
   vanillaRule,
   rangeOfBlock,
@@ -44,8 +44,8 @@ import {
   sizeOfBlock,
   baseOf,
   isRotatableBlock,
-} from "./render_rules.js?v=20260913p";
-import { makeTileWorld, buildBlending } from "./blending.js?v=20260913p";
+} from "./render_rules.js?v=20260913q";
+import { makeTileWorld, buildBlending } from "./blending.js?v=20260913q";
 
 /** 仅取自有属性，避免方块名（如 "constructor"）撞上 Object.prototype 上的同名属性。 */
 function own(obj, key) {
@@ -497,42 +497,40 @@ export function blitRotated(dst, cw, ch, src, sw, sh, cx, cy, scale, angleDeg, t
 
 /** 沿 p1→p2 绘制光束（对应 _draw_beam / Drawf.laser + Lines.line）。 */
 export function drawBeam(dst, cw, ch, x1, y1, x2, y2, tex, tw, th, thickness, tint, alphaScale = 1.0) {
-  const length = Math.hypot(x2 - x1, y2 - y1);
-  if (length < 1.0 || th < 1) return;
-  const ang = Math.atan2(y2 - y1, x2 - x1);
-  const ca = Math.cos(ang);
-  const sa = Math.sin(ang);
+  // 对应 arc Lines.line(TextureRegion,…)：把贴图拉伸为「长=线段长 × 宽=thickness」的一块四边形
+  // （u 沿线段方向映射贴图 x，v 沿垂直方向映射贴图 y）；原版桥带两侧的连续凸起即来自贴图上下边缘。
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const length = Math.hypot(dx, dy);
+  if (length < 1e-3 || tw < 1 || th < 1) return;
+  const ux = dx / length;
+  const uy = dy / length;
+  const vx = -uy;
+  const vy = ux;
   const half = thickness / 2.0;
-  // 颜色剖面只取贴图的“不透明段”
-  let r0 = 0;
-  let r1 = th - 1;
-  const midx = tw >> 1;
-  while (r0 < th && tex[(r0 * tw + midx) * 4 + 3] < 250) r0++;
-  while (r1 > 0 && tex[(r1 * tw + midx) * 4 + 3] < 250) r1--;
-  if (r1 <= r0) {
-    r0 = 0;
-    r1 = th - 1;
-  }
-  const bx0 = Math.trunc(Math.min(x1, x2) - Math.abs(sa) * (half + 1) - 1);
-  const bx1 = Math.trunc(Math.max(x1, x2) + Math.abs(sa) * (half + 1) + 2);
-  const by0 = Math.trunc(Math.min(y1, y2) - Math.abs(ca) * (half + 1) - 1);
-  const by1 = Math.trunc(Math.max(y1, y2) + Math.abs(ca) * (half + 1) + 2);
+  const bx0 = Math.trunc(Math.min(x1, x2) - Math.abs(vx) * (half + 1) - 1);
+  const bx1 = Math.trunc(Math.max(x1, x2) + Math.abs(vx) * (half + 1) + 2);
+  const by0 = Math.trunc(Math.min(y1, y2) - Math.abs(vy) * (half + 1) - 1);
+  const by1 = Math.trunc(Math.max(y1, y2) + Math.abs(vy) * (half + 1) + 2);
   for (let py = Math.max(0, by0); py < Math.min(ch, by1); py++) {
     for (let px = Math.max(0, bx0); px < Math.min(cw, bx1); px++) {
       const rx = px - x1;
       const ry = py - y1;
-      const along = rx * ca + ry * sa;
-      const across = -rx * sa + ry * ca;
-      if (along < 0 || along > length || Math.abs(across) > half + 0.5) continue;
+      const along = rx * ux + ry * uy;
+      const across = rx * vx + ry * vy;
+      if (along < 0 || along > length || Math.abs(across) > half) continue;
+      const u = length > 0 ? along / length : 0;
       const v = across / thickness + 0.5;
-      const row = Math.trunc(Math.min(r1, Math.max(r0, pyRound(r0 + v * (r1 - r0)))));
-      const o = row * tw * 4;
+      const sx = Math.min(tw - 1, Math.max(0, Math.round(u * (tw - 1))));
+      const sy = Math.min(th - 1, Math.max(0, Math.round(v * (th - 1))));
+      const o = (sy * tw + sx) * 4;
+      const a0 = tex[o + 3];
+      if (!a0) continue;
       const r = ifloor((tex[o] * tint[0]) / 255);
       const g = ifloor((tex[o + 1] * tint[1]) / 255);
       const b = ifloor((tex[o + 2] * tint[2]) / 255);
-      const fade =
-        Math.abs(across) <= half - 0.5 ? 1.0 : Math.max(0.0, half + 0.5 - Math.abs(across));
-      const a = Math.trunc(255 * alphaScale * fade);
+      const fade = Math.abs(across) <= half - 0.5 ? 1.0 : Math.max(0.0, half + 0.5 - Math.abs(across));
+      const a = Math.trunc(a0 * alphaScale * fade);
       if (a === 0) continue;
       blendPx(dst, (py * cw + px) * 4, r, g, b, a);
     }
