@@ -25,7 +25,7 @@ import {
   BRIDGE_NO_ARROW,
   BRIDGE_ARROW_OFFSET,
   TEAM_PALETTE,
-} from "./data.js?v=20260913t";
+} from "./data.js?v=20260913u";
 import {
   vanillaRule,
   rangeOfBlock,
@@ -45,8 +45,8 @@ import {
   sizeOfBlock,
   baseOf,
   isRotatableBlock,
-} from "./render_rules.js?v=20260913t";
-import { makeTileWorld, buildBlending } from "./blending.js?v=20260913t";
+} from "./render_rules.js?v=20260913u";
+import { makeTileWorld, buildBlending } from "./blending.js?v=20260913u";
 
 /** 仅取自有属性，避免方块名（如 "constructor"）撞上 Object.prototype 上的同名属性。 */
 function own(obj, key) {
@@ -1106,8 +1106,9 @@ export function drawPowerLasers(buf, cw, ch, layout, sprites, laserAlpha = POWER
       const [ox, oy] = off;
       const te = lookup.get(`${t.x + ox},${t.y + oy}`);
       if (!te) continue;
-      const tb = te.tile.block;
-      if (!(POWER_BLOCKS.has(tb) || MOD_POWER_BLOCKS.has(tb) || MOD_POWER_NODES.has(tb))) continue;
+      // 官方 PowerNode 的 Point2[] config 即 power.links 全集（config 里逐条 addUnique，
+      // 且只允许 other.power != null 的建筑）→ 不按方块类型过滤：只要目标存在就画线。
+      // （曾按 POWER_BLOCKS 白名单过滤，导致 cultivator/coal-centrifuge 等耗电建筑的电线丢失。）
       const tx = te.px + (te.size * TILE) / 2.0;
       const ty = te.py + (te.size * TILE) / 2.0;
       drawNodeLaser(buf, cw, ch, sx, sy, e.size, tx, ty, te.size, sprites, laserAlpha, opts);
