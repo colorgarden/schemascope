@@ -612,6 +612,44 @@ h1 .sub {
   color: #e55454;
 }
 
+/* 运行时物品行（产出/消耗/弹药/燃料）：横跨整行，可换行 */
+.req-run {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 6px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.req-run-label {
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.req-run-item {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.req-run-prod {
+  color: #fbd367;
+}
+
+.req-run-cons {
+  color: #e55454;
+}
+
+.req-run-ammo,
+.req-run-fuel {
+  color: var(--text);
+}
+
 @media (max-width: 560px) {
   .requirements {
     grid-template-columns: repeat(2, minmax(0, 1fr));

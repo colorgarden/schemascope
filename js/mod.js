@@ -10,7 +10,7 @@
 // 纯逻辑，可在 Node 下单测。
 // =============================================================================
 
-import { openZip } from "./zip.js?v=20260913k";
+import { openZip } from "./zip.js?v=20260913l";
 
 /** 去掉 // 与 /* *\/ 注释（字符串感知），便于宽松解析模组 JSON。 */
 export function stripJsonComments(src) {
@@ -89,6 +89,24 @@ export function parseRequirements(arr) {
     }
   }
   return out;
+}
+
+/**
+ * 解析模组 JSON 的物品定义（consumes.items / outputItem(s)）。
+ * 兼容：数组（"item/amount" 或 {item,amount}）、单个对象/字符串、映射 {item: amount}。
+ * 结构不确定时返回空数组。
+ */
+export function parseItemDefs(v) {
+  if (v == null) return [];
+  if (Array.isArray(v)) return parseRequirements(v);
+  if (typeof v === "string") return parseRequirements([v]);
+  if (typeof v === "object") {
+    // 兼容 Mindustry 的 ConsumeItems 包装形态 { items: [...] }
+    if (Array.isArray(v.items)) return parseRequirements(v.items);
+    if (v.item != null) return parseRequirements([v]);
+    return Object.entries(v).map(([item, amount]) => [String(item), Number(amount) || 0]);
+  }
+  return [];
 }
 
 /** 解析 .properties 文本（bundle）。 */
@@ -322,7 +340,8 @@ function makeLazySpriteMap(zip, entriesMap, stats, fallbackMaps = []) {
  * @returns {Promise<{name,displayName,blocks:Map,sprites,spritesOverride,bundle:Map,fileName,spriteStats}>}
  *   blocks: Map(内部名/base → {base,size,name,requirements,type,range,bridgeWidth,
  *            hasPower,outlineIcon,outlineColor,outlineRadius,rotate,consumesPower,
- *            powerProduction,powerUsage,
+ *            powerProduction,powerUsage,consumeItems,outputItems,
+ *            craftTime,itemDuration,constructTime,
  *            laserRange,laserScale,laserColor1,laserColor2,maxNodes})
  *   sprites: 懒解压贴图表（basename 索引，sprites-override 已覆盖）；
  *            `size`/`has`/`keys` 为条目数，`get(name)` 按需解压返回 Blob
@@ -383,6 +402,12 @@ export async function parseMod(input, fileName = "mod.zip") {
         obj.consumes && obj.consumes.power !== undefined && !Number.isNaN(Number(obj.consumes.power))
           ? Number(obj.consumes.power)
           : 0,
+      // 物品消耗/产出与周期（缺省空/0，结构不确定时安全回退）
+      consumeItems: parseItemDefs(obj.consumes && obj.consumes.items != null ? obj.consumes.items : obj.consumes && obj.consumes.item),
+      outputItems: parseItemDefs(obj.outputItems != null ? obj.outputItems : obj.outputItem),
+      craftTime: Number(obj.craftTime) > 0 ? Number(obj.craftTime) : 0,
+      itemDuration: Number(obj.itemDuration) > 0 ? Number(obj.itemDuration) : 0,
+      constructTime: Number(obj.constructTime) > 0 ? Number(obj.constructTime) : 0,
       // 电力节点激光参数（缺失记 undefined）
       laserRange: obj.laserRange !== undefined ? Number(obj.laserRange) : undefined,
       laserScale: obj.laserScale !== undefined ? Number(obj.laserScale) : undefined,

@@ -10,23 +10,23 @@ import {
   AUX_PATHS,
   DEFAULT_SCALE,
   DEFAULT_PAD,
-} from "./data.js?v=20260913k";
-import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913k";
-import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913k";
-import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock, isAutotilerBlock, isTurretBlock, isFactoryBlock, isReconstructorBlock, factorySpriteNames, reconstructorSpriteNames, sizeOfBlock, turretSpriteNames, autotilerSpriteNames, selectMissingSprites } from "./render_rules.js?v=20260913k";
-import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260913k";
-import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913k";
-import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913k";
-import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913k";
-import { requirementsList, computePower, autoFixed } from "./requirements.js?v=20260913k";
-import { BLOCK_REQUIREMENTS } from "./requirements_data.js?v=20260913k";
-import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260913k";
-import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913k";
-import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913k";
-import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913k";
+} from "./data.js?v=20260913l";
+import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913l";
+import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913l";
+import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock, isAutotilerBlock, isTurretBlock, isFactoryBlock, isReconstructorBlock, factorySpriteNames, reconstructorSpriteNames, sizeOfBlock, turretSpriteNames, autotilerSpriteNames, selectMissingSprites } from "./render_rules.js?v=20260913l";
+import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260913l";
+import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913l";
+import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913l";
+import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913l";
+import { requirementsList, computePower, computeItemRates, autoFixed } from "./requirements.js?v=20260913l";
+import { BLOCK_REQUIREMENTS, ITEM_CN } from "./requirements_data.js?v=20260913l";
+import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260913l";
+import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913l";
+import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913l";
+import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913l";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260913k";
+const APP_VERSION = "20260913l";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -106,7 +106,7 @@ let modDefs = new Map(); // 方块名（内部名/base）-> 模组方块定义�
 let modBridgeNames = new Set(); // 模组桥方块名（内部名与 base）
 let modBlockSizes = new Map(); // 方块名（内部名/base）-> size
 let modRequirementsTable = {}; // 方块名 -> requirements
-let modPowerTable = {}; // 方块名 -> { powerProduction, powerUsage }
+let modComputeTable = {}; // 方块名 -> { powerProduction, powerUsage, consumeItems, outputItems, craftTime, itemDuration, constructTime }
 let modBundle = new Map(); // bundle key -> value（合并所有模组）
 let modItemNames = new Map(); // 模组物品内部名 -> 显示名（配置提示用）
 
@@ -271,7 +271,7 @@ function rebuildModDerived() {
   modNormalIndex = new Map();
   modBlockSizes = new Map();
   modRequirementsTable = {};
-  modPowerTable = {};
+  modComputeTable = {};
   modBundle = new Map();
   modLayersMap = {};
   modDefs = new Map();
@@ -291,9 +291,14 @@ function rebuildModDerived() {
     for (const [key, def] of m.blocks) {
       modBlockSizes.set(key, def.size);
       modRequirementsTable[key] = def.requirements;
-      modPowerTable[key] = {
+      modComputeTable[key] = {
         powerProduction: def.powerProduction || 0,
         powerUsage: def.powerUsage || 0,
+        consumeItems: def.consumeItems || [],
+        outputItems: def.outputItems || [],
+        craftTime: def.craftTime || 0,
+        itemDuration: def.itemDuration || 0,
+        constructTime: def.constructTime || 0,
       };
       modDefs.set(key, def);
 
@@ -1059,17 +1064,50 @@ function buildLegend(schem) {
   els.legend.replaceChildren(frag);
 }
 
+/** 物品显示名：模组 bundle → ITEM_CN → CONTENT_CN → 内部名。 */
+function itemDisplayName(ref) {
+  return modItemName(ref) || ITEM_CN[ref] || CONTENT_CN[ref] || ref;
+}
+
+/** 构建一个「运行时」条目 span。 */
+function runItemSpan(text, cls) {
+  const s = document.createElement("span");
+  s.className = "req-run-item " + cls;
+  s.textContent = text;
+  return s;
+}
+
+/** 追加一行「运行时」信息（产出/消耗/弹药/燃料）；spans 为空则不显示。 */
+function appendRunRow(frag, label, spans) {
+  if (!spans.length) return;
+  const row = document.createElement("div");
+  row.className = "req-run";
+  const lab = document.createElement("span");
+  lab.className = "req-run-label";
+  lab.textContent = label;
+  row.appendChild(lab);
+  for (const s of spans) row.appendChild(s);
+  frag.appendChild(row);
+}
+
 /** 总耗材面板（vanilla + 模组合并累加；无数据不显示）。 */
 async function buildRequirements(schem) {
   const table = Object.assign({}, BLOCK_REQUIREMENTS, modRequirementsTable);
   const list = requirementsList(schem.tiles, table, modItemName);
-  // 电力收支（每刻 → ×60 得到官方面板显示的功率）
-  const powerTable = Object.assign({}, VANILLA_BLOCKS, modPowerTable);
-  const { production, consumption } = computePower(schem.tiles, powerTable);
+  // 电力收支（每刻 → ×60 得到官方面板显示的功率）与运行时物品速率
+  const calcTable = Object.assign({}, VANILLA_BLOCKS, modComputeTable);
+  const { production, consumption } = computePower(schem.tiles, calcTable);
+  const rates = computeItemRates(schem.tiles, calcTable);
   const prod = production * 60;
   const cons = consumption * 60;
   const showPower = Math.abs(prod) > 1e-6 || Math.abs(cons) > 1e-6;
-  if (!list.length && !showPower) {
+  const fuelCats = Object.keys(rates.fuels).filter((c) => rates.fuels[c] && rates.fuels[c].size);
+  const hasRun =
+    Object.keys(rates.produce).length > 0 ||
+    Object.keys(rates.consume).length > 0 ||
+    rates.ammo.size > 0 ||
+    fuelCats.length > 0;
+  if (!list.length && !showPower && !hasRun) {
     els.reqWrap.style.display = "none";
     els.requirements.replaceChildren();
     return;
@@ -1137,6 +1175,40 @@ async function buildRequirements(schem) {
     }
     frag.appendChild(row);
   }
+
+  // 运行时物品：产出/消耗（按速率降序）、弹药、燃料（按类别）
+  const produceEntries = Object.entries(rates.produce).sort((a, b) => b[1] - a[1]);
+  appendRunRow(
+    frag,
+    "运行产出",
+    produceEntries.map(([item, r]) =>
+      runItemSpan(itemDisplayName(item) + " +" + autoFixed(r, 2) + "/s", "req-run-prod")
+    )
+  );
+  const consumeEntries = Object.entries(rates.consume).sort((a, b) => b[1] - a[1]);
+  appendRunRow(
+    frag,
+    "运行消耗",
+    consumeEntries.map(([item, r]) =>
+      runItemSpan(itemDisplayName(item) + " -" + autoFixed(r, 2) + "/s", "req-run-cons")
+    )
+  );
+  appendRunRow(
+    frag,
+    "弹药",
+    [...rates.ammo].map((item) => runItemSpan(itemDisplayName(item), "req-run-ammo"))
+  );
+  const CAT_CN = { flammable: "可燃", explosive: "易爆", radioactive: "放射性" };
+  appendRunRow(
+    frag,
+    "燃料",
+    fuelCats.map((cat) =>
+      runItemSpan(
+        (CAT_CN[cat] || cat) + "：" + [...rates.fuels[cat]].map(itemDisplayName).join("、"),
+        "req-run-fuel"
+      )
+    )
+  );
 
   els.requirements.replaceChildren(frag);
 }

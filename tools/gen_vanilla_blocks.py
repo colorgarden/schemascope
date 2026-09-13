@@ -152,6 +152,24 @@ def parse_blocks(src: str) -> dict:
                     use = v
         if use:
             entry["powerUsage"] = use
+        # ---- 物品消耗/产出/弹药/燃料 ----
+        items = parse_block_items(body, cls)
+        if items["consumeItems"]:
+            entry["consumeItems"] = items["consumeItems"]
+        if items["outputItems"]:
+            entry["outputItems"] = items["outputItems"]
+        if items["ammoItems"]:
+            entry["ammoItems"] = items["ammoItems"]
+        if items["fuelCategories"]:
+            entry["fuelCategories"] = items["fuelCategories"]
+            entry["fuelItems"] = {c: FUEL_ITEMS[c] for c in items["fuelCategories"]}
+        has_item_io = bool(items["consumeItems"] or items["outputItems"])
+        if items["craftTime"] and items["craftTime"] > 0 and has_item_io:
+            entry["craftTime"] = items["craftTime"]
+        if items["itemDuration"] and items["itemDuration"] > 0 and (items["consumeItems"] or items["fuelCategories"]):
+            entry["itemDuration"] = items["itemDuration"]
+        if items["constructTime"] and items["constructTime"] > 0 and has_item_io:
+            entry["constructTime"] = items["constructTime"]
         # ---- 属性解析 ----
         tf = TYPE_FLAGS.get(cls, {})
         ex = parse_explicit_flags(body)
@@ -282,6 +300,174 @@ def eval_number(expr: str, env: dict):
         return float(eval(e, {"__builtins__": {}}, {}))
     except Exception:
         return None
+
+
+# -----------------------------------------------------------------------------
+# 物品消耗/产出（consumeItem(s)/outputItem(s)/ammo()/燃料类别）
+#
+# 官方事实（v159.7）：
+#   * GenericCrafter：`consumeItems(with(Items.lead,1, Items.sand,1))`、
+#     `outputItem = new ItemStack(Items.metaglass,1)` 均按「每 craftTime 一次」；
+#     速率 = amount * 60 / craftTime（每秒）。craftTime 类默认 80（GenericCrafter.java:40）。
+#   * ConsumeGenerator：每 itemDuration ticks 消耗 1 个；ConsumeItemFlammable 等
+#     用 filter 判定物品类别（见 world/consumers/ConsumeItem*.java）。
+#   * ItemTurret：`ammo(Items.copper, bullet, Items.graphite, bullet, …)` 弹药列表。
+# -----------------------------------------------------------------------------
+ITEM_PROPS = {
+    # 来自 1597_Items.java 的 items 属性（只列非零 flammability/explosiveness/radioactivity）
+    "coal": {"flammability": 1.0, "explosiveness": 0.2},
+    "thorium": {"explosiveness": 0.2, "radioactivity": 1.0},
+    "plastanium": {"flammability": 0.1, "explosiveness": 0.2},
+    "phase-fabric": {"radioactivity": 0.6},
+    "spore-pod": {"flammability": 1.15},
+    "blast-compound": {"flammability": 0.4, "explosiveness": 1.2},
+    "pyratite": {"flammability": 1.4, "explosiveness": 0.4},
+    "fissile-matter": {"radioactivity": 1.5},
+    "dormant-cyst": {"flammability": 0.1},
+}
+ITEM_ORDER = [
+    "scrap", "copper", "lead", "graphite", "coal", "titanium", "thorium", "silicon",
+    "plastanium", "phase-fabric", "surge-alloy", "spore-pod", "sand", "blast-compound",
+    "pyratite", "metaglass", "beryllium", "tungsten", "oxide", "carbide",
+    "fissile-matter", "dormant-cyst",
+]
+# 类别 → (属性名, 阈值)；阈值 = ConsumeItemFlammable/Explosive/Radioactive 默认 0.2
+FUEL_ATTR = {
+    "flammable": ("flammability", 0.2),
+    "explosive": ("explosiveness", 0.2),
+    "radioactive": ("radioactivity", 0.2),
+}
+
+
+def _compute_fuel_items():
+    out = {}
+    for cat, (attr, thr) in FUEL_ATTR.items():
+        items = []
+        for it in ITEM_ORDER:
+            if ITEM_PROPS.get(it, {}).get(attr, 0.0) >= thr:
+                items.append(it)
+        out[cat] = items
+    return out
+
+
+FUEL_ITEMS = _compute_fuel_items()
+
+# 周期字段的类默认值（Blocks.java 未声明时回退；来源见各官方类）
+CYCLE_DEFAULTS = {
+    "craftTime": {"GenericCrafter": 80.0, "AttributeCrafter": 80.0, "HeatCrafter": 80.0},
+    "itemDuration": {"ConsumeGenerator": 120.0, "HeaterGenerator": 120.0,
+                     "ImpactReactor": 60.0, "NuclearReactor": 120.0},
+    "constructTime": {"Reconstructor": 120.0},
+}
+
+
+def strip_comments(s: str) -> str:
+    s = re.sub(r"/\*.*?\*/", "", s, flags=re.S)
+    s = re.sub(r"//[^\n]*", "", s)
+    return s
+
+
+def split_top_commas(s: str):
+    """按顶层逗号切分（忽略字符串与 ()/[]/{} 内部）。"""
+    parts, buf, depth, in_str, esc = [], [], 0, False, False
+    for ch in s:
+        if in_str:
+            buf.append(ch)
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+            buf.append(ch)
+            continue
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append("".join(buf))
+            buf = []
+            continue
+        buf.append(ch)
+    parts.append("".join(buf))
+    return parts
+
+
+def camel_to_kebab(n: str) -> str:
+    return re.sub(r"([a-z0-9])([A-Z])", r"\1-\2", n).lower()
+
+
+def parse_item_pairs(args: str):
+    """解析 with(a,n,b,m) / ItemStack(...) / ItemStack[]{...} / 裸 Items.x 列表 → [[item,amount]]。"""
+    s = args.strip()
+    m = re.fullmatch(r"with\s*\((.*)\)", s, re.S)
+    if m:
+        s = m.group(1)
+    m = re.fullmatch(r"new\s+ItemStack\s*\[\]\s*\{(.*)\}", s, re.S)
+    if m:
+        s = m.group(1)
+    parts = split_top_commas(s)
+    out, i = [], 0
+    while i < len(parts):
+        p = parts[i].strip()
+        am = re.fullmatch(r"Items\.([A-Za-z0-9_]+)", p)
+        if am:
+            item, amount = camel_to_kebab(am.group(1)), 1
+            if i + 1 < len(parts) and re.fullmatch(r"-?\d+", parts[i + 1].strip()):
+                amount = int(parts[i + 1].strip())
+                i += 1
+            out.append([item, amount])
+        else:
+            sm = re.fullmatch(r"new\s+ItemStack\s*\(\s*Items\.([A-Za-z0-9_]+)\s*,\s*(\d+)\s*\)", p)
+            if sm:
+                out.append([camel_to_kebab(sm.group(1)), int(sm.group(2))])
+        i += 1
+    return out
+
+
+def find_matching_paren_in(s: str, i: int) -> int:
+    depth = 0
+    while i < len(s):
+        if s[i] == "(":
+            depth += 1
+        elif s[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return len(s)
+
+
+def parse_block_items(body: str, cls: str):
+    """提取方块的物品消耗/产出/弹药/燃料类别与周期字段（含类默认回退）。"""
+    b = strip_comments(body)
+    res = {"consumeItems": [], "outputItems": [], "ammoItems": [], "fuelCategories": []}
+    for m in re.finditer(r"\bconsumeItems?\s*\(", b):
+        e = find_matching_paren_in(b, m.end() - 1)
+        res["consumeItems"].extend(parse_item_pairs(b[m.end():e]))
+    for m in re.finditer(r"\boutputItems?\s*=\s*(.+?);", b, re.S):
+        res["outputItems"].extend(parse_item_pairs(m.group(1)))
+    for m in re.finditer(r"\bammo\s*\(", b):
+        e = find_matching_paren_in(b, m.end() - 1)
+        for part in split_top_commas(b[m.end():e]):
+            im = re.fullmatch(r"\s*Items\.([A-Za-z0-9_]+)\s*", part)
+            if im:
+                res["ammoItems"].append(camel_to_kebab(im.group(1)))
+    for m in re.finditer(r"new\s+ConsumeItem(Flammable|Explosive|Radioactive)\s*\(", b):
+        cat = {"Flammable": "flammable", "Explosive": "explosive", "Radioactive": "radioactive"}[m.group(1)]
+        if cat not in res["fuelCategories"]:
+            res["fuelCategories"].append(cat)
+    for key in ("craftTime", "itemDuration", "constructTime"):
+        m = re.search(r"\b%s\s*=\s*([^;]+);" % key, b)
+        v = eval_number(m.group(1), {}) if m else None
+        if v is None:
+            v = CYCLE_DEFAULTS.get(key, {}).get(cls)
+        res[key] = v
+    return res
 
 
 def parse_region_part(src: str, start: int, env: dict, out_parts: list):
@@ -434,6 +620,14 @@ HEAD_BLOCKS = '''// ============================================================
 //   powerProduction?: 每刻发电（PowerGenerator.getDisplayedPowerProduction()，
 //     缺省 0；storage 值=原始值，ThermalGenerator 已按 displayEfficiencyScale 折算）,
 //   powerUsage?: 每刻耗电（consumePower 的 consPower.usage，缺省 0）,
+//   consumeItems?: [[物品, 数量], …]（consumeItem(s)，数量为「每周期」量）,
+//   outputItems?: [[物品, 数量], …]（outputItem(s)，每周期量）,
+//   ammoItems?: [物品, …]（ItemTurret.ammo(...) 的弹药列表，按出现顺序）,
+//   fuelCategories?: ["flammable"|"explosive"|"radioactive", …]（ConsumeItem* 类别）,
+//   fuelItems?: {类别: [可烧物品, …]}（按 ConsumeItem* filter 阈值 + Items 属性静态算出）,
+//   craftTime?: 制造周期（ticks，缺省该类默认；速率 = 数量*60/craftTime）,
+//   itemDuration?: 发电机每烧一个物品的 ticks（速率 = 数量*60/itemDuration）,
+//   constructTime?: 单位工厂建造周期（ticks；Reconstructor 的物品输入速率用）,
 //   flags?: { hasItems/hasLiquids/outputsLiquid/outputsItems/squareSprite/rotate/
 //             rotateDraw/isDuct/armored } }。flags 仅记录与类默认不同的值
 //   （squareSprite/rotateDraw 仅记 false，其余仅记 true）。类型是 render_rules.js
@@ -453,6 +647,18 @@ def js_value(v):
     return str(v)
 
 
+def emit_pairs(pairs):
+    return "[%s]" % ", ".join('["%s", %s]' % (it, js_value(n)) for it, n in pairs)
+
+
+def emit_list(items):
+    return "[%s]" % ", ".join('"%s"' % x for x in items)
+
+
+def emit_fuel_items(d):
+    return "{ %s }" % ", ".join("%s: %s" % (k, emit_list(v)) for k, v in d.items())
+
+
 def emit_blocks(blocks: dict, path: Path):
     lines = [HEAD_BLOCKS.rstrip("\n"), "export const VANILLA_BLOCKS = {"]
     for name in sorted(blocks):
@@ -464,6 +670,22 @@ def emit_blocks(blocks: dict, path: Path):
             parts.append("powerProduction: %s" % js_value(e["powerProduction"]))
         if "powerUsage" in e:
             parts.append("powerUsage: %s" % js_value(e["powerUsage"]))
+        if "consumeItems" in e:
+            parts.append("consumeItems: %s" % emit_pairs(e["consumeItems"]))
+        if "outputItems" in e:
+            parts.append("outputItems: %s" % emit_pairs(e["outputItems"]))
+        if "ammoItems" in e:
+            parts.append("ammoItems: %s" % emit_list(e["ammoItems"]))
+        if "fuelCategories" in e:
+            parts.append("fuelCategories: %s" % emit_list(e["fuelCategories"]))
+        if "fuelItems" in e:
+            parts.append("fuelItems: %s" % emit_fuel_items(e["fuelItems"]))
+        if "craftTime" in e:
+            parts.append("craftTime: %s" % js_value(e["craftTime"]))
+        if "itemDuration" in e:
+            parts.append("itemDuration: %s" % js_value(e["itemDuration"]))
+        if "constructTime" in e:
+            parts.append("constructTime: %s" % js_value(e["constructTime"]))
         if e.get("flags"):
             fl = ", ".join("%s: %s" % (k, js_value(v)) for k, v in e["flags"].items())
             parts.append("flags: { %s }" % fl)

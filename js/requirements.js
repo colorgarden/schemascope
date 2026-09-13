@@ -5,9 +5,9 @@
 // 直接累加，无任何倍率；没有数据的方块跳过。
 // =============================================================================
 
-import { BLOCK_REQUIREMENTS, ITEM_CN } from "./requirements_data.js?v=20260913k";
-import { CONTENT_CN } from "./data.js?v=20260913k";
-import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260913k";
+import { BLOCK_REQUIREMENTS, ITEM_CN } from "./requirements_data.js?v=20260913l";
+import { CONTENT_CN } from "./data.js?v=20260913l";
+import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260913l";
 
 /**
  * 累加蓝图总耗材。
@@ -63,6 +63,63 @@ export function computePower(tiles, blockTable = VANILLA_BLOCKS) {
     consumption += Number(def.powerUsage) || 0;
   }
   return { production, consumption };
+}
+
+/** 四舍五入保留 2 位小数。 */
+function round2(x) {
+  return Math.round((Number(x) || 0) * 100) / 100;
+}
+
+/**
+ * 蓝图运行时物品速率（每秒），照官方「每周期量 × 60 / 周期 ticks」：
+ *   - crafter（GenericCrafter 等）：周期 = craftTime（缺省类默认 80）
+ *   - 发电机（ConsumeGenerator/NuclearReactor/ImpactReactor）：周期 = itemDuration
+ *   - 单位工厂（Reconstructor）：周期 = constructTime
+ *   - 无任何周期字段时视为每刻（amount * 60）
+ * 汇总后四舍五入保留 2 位小数。
+ * @param {Array<{block:string}>} tiles
+ * @param {Object} blockTable 方块 → { outputItems?, consumeItems?, craftTime?, itemDuration?,
+ *   constructTime?, ammoItems?, fuelItems? }
+ * @returns {{produce:Object, consume:Object, ammo:Set<string>, fuels:Object}}
+ *   produce/consume: { 物品: 速率/秒 }；ammo: 弹药物品集合；
+ *   fuels: { flammable:Set, explosive:Set, radioactive:Set }
+ */
+export function computeItemRates(tiles, blockTable = VANILLA_BLOCKS) {
+  const produceRaw = {};
+  const consumeRaw = {};
+  const ammo = new Set();
+  const fuels = { flammable: new Set(), explosive: new Set(), radioactive: new Set() };
+
+  for (const t of tiles) {
+    const def = blockTable[t.block];
+    if (!def) continue;
+    const cycle =
+      (Number(def.craftTime) || 0) ||
+      (Number(def.itemDuration) || 0) ||
+      (Number(def.constructTime) || 0);
+    const rate = (amount) => (cycle > 0 ? (amount * 60) / cycle : amount * 60);
+    const add = (map, pairs) => {
+      for (const [item, amount] of pairs || []) {
+        map[item] = (map[item] || 0) + rate(amount);
+      }
+    };
+    add(produceRaw, def.outputItems);
+    add(consumeRaw, def.consumeItems);
+    for (const item of def.ammoItems || []) ammo.add(item);
+    if (def.fuelItems) {
+      for (const cat of Object.keys(def.fuelItems)) {
+        if (!fuels[cat]) fuels[cat] = new Set();
+        for (const item of def.fuelItems[cat]) fuels[cat].add(item);
+      }
+    }
+  }
+
+  const finish = (m) => {
+    const out = {};
+    for (const k of Object.keys(m)) out[k] = round2(m[k]);
+    return out;
+  };
+  return { produce: finish(produceRaw), consume: finish(consumeRaw), ammo, fuels };
 }
 
 export function requirementsList(tiles, table = BLOCK_REQUIREMENTS, nameOf = null) {

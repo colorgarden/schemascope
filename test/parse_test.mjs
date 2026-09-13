@@ -67,7 +67,7 @@ import { LAYERS, OUTLINE_ICON, TILE, CONTENT_CN, CONTENT_COLORS, CONFIG_UNDERLAY
 import { setIconIndex, resolveIcon, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath, ICON_FONT_LO } from "../js/icons.js";
 import { ICON_BY_CODE } from "../js/icons_data.js";
 import { simpleHash, createPrefetchManager } from "../js/prefetch.js";
-import { computeRequirements, requirementsList, computePower, autoFixed } from "../js/requirements.js";
+import { computeRequirements, requirementsList, computePower, computeItemRates, autoFixed } from "../js/requirements.js";
 import { BLOCK_REQUIREMENTS } from "../js/requirements_data.js";
 import { openZip } from "../js/zip.js";
 import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers, looseJson, parseRequirements, parseHexColor } from "../js/mod.js";
@@ -646,6 +646,77 @@ function testPower() {
 }
 
 // -----------------------------------------------------------------------------
+// 5.2 运行时物品速率（Schematic 物品消耗/产出）测试
+// -----------------------------------------------------------------------------
+function testItemRates() {
+  console.log("== 运行时物品速率测试 ==");
+
+  // (a) 生成器抽样：consumeItems/outputItems/craftTime
+  const vb = VANILLA_BLOCKS;
+  check("kiln consumeItems", JSON.stringify(vb.kiln.consumeItems) === JSON.stringify([["lead", 1], ["sand", 1]]), JSON.stringify(vb.kiln.consumeItems));
+  check("kiln outputItems", JSON.stringify(vb.kiln.outputItems) === JSON.stringify([["metaglass", 1]]), JSON.stringify(vb.kiln.outputItems));
+  check("kiln craftTime=30", vb.kiln.craftTime === 30, String(vb.kiln.craftTime));
+  check("silicon-smelter consumeItems", JSON.stringify(vb["silicon-smelter"].consumeItems) === JSON.stringify([["coal", 1], ["sand", 2]]), JSON.stringify(vb["silicon-smelter"].consumeItems));
+  check("silicon-smelter outputItems", JSON.stringify(vb["silicon-smelter"].outputItems) === JSON.stringify([["silicon", 1]]), JSON.stringify(vb["silicon-smelter"].outputItems));
+  check("silicon-smelter craftTime=40", vb["silicon-smelter"].craftTime === 40, String(vb["silicon-smelter"].craftTime));
+  check("graphite-press consumeItems", JSON.stringify(vb["graphite-press"].consumeItems) === JSON.stringify([["coal", 2]]), JSON.stringify(vb["graphite-press"].consumeItems));
+  check("graphite-press outputItems", JSON.stringify(vb["graphite-press"].outputItems) === JSON.stringify([["graphite", 1]]), JSON.stringify(vb["graphite-press"].outputItems));
+  check("graphite-press craftTime=90", vb["graphite-press"].craftTime === 90, String(vb["graphite-press"].craftTime));
+
+  // 燃料类别 + 可烧物品清单
+  const cg = vb["combustion-generator"];
+  check("combustion-generator fuelCategories=[flammable]", JSON.stringify(cg.fuelCategories) === JSON.stringify(["flammable"]), JSON.stringify(cg.fuelCategories));
+  const cgFuel = (cg.fuelItems && cg.fuelItems.flammable) || [];
+  check("combustion fuelItems.flammable 含 coal/pyratite/spore-pod", ["coal", "pyratite", "spore-pod"].every((i) => cgFuel.includes(i)), cgFuel.join(","));
+  check("combustion fuelItems.flammable 不含 silicon", !cgFuel.includes("silicon"));
+  check("rtg fuelItems.radioactive 含 thorium/phase-fabric", ((vb["rtg-generator"].fuelItems || {}).radioactive || []).includes("thorium") && ((vb["rtg-generator"].fuelItems || {}).radioactive || []).includes("phase-fabric"));
+
+  // 弹药
+  check("duo ammoItems 含 copper/graphite", (vb.duo.ammoItems || []).includes("copper") && (vb.duo.ammoItems || []).includes("graphite"), JSON.stringify(vb.duo.ammoItems));
+  check("scatter ammoItems 含 scrap/lead/metaglass", ["scrap", "lead", "metaglass"].every((i) => (vb.scatter.ammoItems || []).includes(i)), JSON.stringify(vb.scatter.ammoItems));
+
+  // (b) computeItemRates：kiln → metaglass +2/s；lead/sand -2/s
+  const kiln = computeItemRates([{ block: "kiln" }]);
+  check("kiln produce metaglass +2", kiln.produce.metaglass === 2, JSON.stringify(kiln.produce));
+  check("kiln consume lead/sand -2", kiln.consume.lead === 2 && kiln.consume.sand === 2, JSON.stringify(kiln.consume));
+
+  // silicon-smelter → silicon +1.5；coal -1.5；sand -3
+  const smelt = computeItemRates([{ block: "silicon-smelter" }]);
+  check("silicon-smelter produce silicon +1.5", smelt.produce.silicon === 1.5, JSON.stringify(smelt.produce));
+  check("silicon-smelter consume coal -1.5/sand -3", smelt.consume.coal === 1.5 && smelt.consume.sand === 3, JSON.stringify(smelt.consume));
+
+  // graphite-press → graphite +0.67、coal -1.33（四舍五入 2 位）
+  const gp = computeItemRates([{ block: "graphite-press" }]);
+  check("graphite-press produce graphite +0.67", gp.produce.graphite === 0.67, JSON.stringify(gp.produce));
+  check("graphite-press consume coal -1.33", gp.consume.coal === 1.33, JSON.stringify(gp.consume));
+
+  // 多块累加：2×kiln + silicon-smelter
+  const multi = computeItemRates([{ block: "kiln" }, { block: "kiln" }, { block: "silicon-smelter" }]);
+  check("多块累加 produce metaglass=4 silicon=1.5", multi.produce.metaglass === 4 && multi.produce.silicon === 1.5, JSON.stringify(multi.produce));
+  check("多块累加 consume sand = 2*2+3 = 7", multi.consume.sand === 7, JSON.stringify(multi.consume));
+  check("多块累加 consume lead=4 coal=1.5", multi.consume.lead === 4 && multi.consume.coal === 1.5, JSON.stringify(multi.consume));
+
+  // 发电机（itemDuration）：differential-generator pyratite 1*60/220 ≈ 0.27/s
+  const diff = computeItemRates([{ block: "differential-generator" }]);
+  check("differential-generator consume pyratite ≈0.27/s", Math.abs(diff.consume.pyratite - 0.27) < 0.001, JSON.stringify(diff.consume));
+
+  // 弹药与燃料集合（不参与速率）
+  const combat = computeItemRates([{ block: "duo" }, { block: "combustion-generator" }]);
+  check("computeItemRates ammo 含 copper/graphite/silicon", combat.ammo.has("copper") && combat.ammo.has("graphite") && combat.ammo.has("silicon"));
+  check("computeItemRates fuels.flammable 含 coal", combat.fuels.flammable.has("coal") && combat.fuels.flammable.has("pyratite"));
+  check("computeItemRates 无速率产出", Object.keys(combat.produce).length === 0 && Object.keys(combat.consume).length === 0);
+
+  // 未知方块跳过
+  const none = computeItemRates([{ block: "not-a-block" }]);
+  check("computeItemRates 跳过未知方块", Object.keys(none.produce).length === 0 && none.ammo.size === 0);
+
+  // 模组表（独立 blockTable）
+  const modTable = { "模组-炉": { consumeItems: [["coal", 2]], outputItems: [["graphite", 1]], craftTime: 60 } };
+  const mr = computeItemRates([{ block: "模组-炉" }], modTable);
+  check("computeItemRates 模组表 produce graphite=1 consume coal=2", mr.produce.graphite === 1 && mr.consume.coal === 2, JSON.stringify(mr));
+}
+
+// -----------------------------------------------------------------------------
 // 6. 模组支持（zip 读取 / 解析 / 需求 / 纯逻辑）
 // -----------------------------------------------------------------------------
 const MOD_DIR = "/data/data/com.termux/files/usr/tmp/opencode";
@@ -754,6 +825,22 @@ async function testMods() {
     // 火力反应堆：prod 14，cons 0.1；便携式抽水机：cons 0.5 → 合计 prod 14 / cons 0.6
     const pc67 = computePower([{ block: "无限-火力反应堆" }, { block: "无限-便携式抽水机" }], modPower);
     check("67科技 computePower 模组 = 14 / 0.6", pc67.production === 14 && Math.abs(pc67.consumption - 0.6) < 1e-9, JSON.stringify(pc67));
+    // 模组物品消耗/产出（consumes.items / outputItem / craftTime）
+    const quad = m.blocks.get("无限-四重压缩机");
+    check(
+      "67科技 四重压缩机 consumeItems=[[coal,30]]",
+      !!quad && JSON.stringify(quad.consumeItems) === JSON.stringify([["coal", 30]]),
+      quad && JSON.stringify(quad.consumeItems)
+    );
+    check(
+      "67科技 四重压缩机 outputItems=[[graphite,30]] craftTime=20",
+      !!quad && JSON.stringify(quad.outputItems) === JSON.stringify([["graphite", 30]]) && quad.craftTime === 20,
+      quad && JSON.stringify([quad.outputItems, quad.craftTime])
+    );
+    check(
+      "67科技 模组方块 item 字段默认安全回退",
+      [...m.blocks.values()].every((d) => Array.isArray(d.consumeItems) && Array.isArray(d.outputItems) && !Number.isNaN(d.craftTime))
+    );
     // 显示名：67科技无 bundle → 回退 JSON name
     check(
       "显示名 67：无 bundle 回退 JSON name",
@@ -791,6 +878,21 @@ async function testMods() {
     for (const it of ["硅钢", "纳米核", "一级协议"]) {
       check(`饱和火力 bundle item.饱和火力-${it}.name`, !!m.bundle.get(`item.饱和火力-${it}.name`), m.bundle.get(`item.饱和火力-${it}.name`));
     }
+    // 模组物品消耗/产出：无1（consumes.items=["coal/5"]，outputItem="copper/10"，craftTime=6）
+    const w1 = m.blocks.get("饱和火力-无1");
+    check(
+      "饱和火力 无1 consumeItems/outputItems/craftTime",
+      !!w1 &&
+        JSON.stringify(w1.consumeItems) === JSON.stringify([["coal", 5]]) &&
+        JSON.stringify(w1.outputItems) === JSON.stringify([["copper", 10]]) &&
+        w1.craftTime === 6,
+      w1 && JSON.stringify([w1.consumeItems, w1.outputItems, w1.craftTime])
+    );
+    check(
+      "饱和火力 模组方块 item 字段默认安全回退",
+      [...m.blocks.values()].every((d) => Array.isArray(d.consumeItems) && Array.isArray(d.outputItems) && !Number.isNaN(d.craftTime))
+    );
+
     const lab = m.blocks.get("饱和火力-前沿实验室");
     check("饱和火力 前沿实验室存在", !!lab);
     if (lab) {
@@ -2506,6 +2608,7 @@ async function main() {
   await testPrefetch();
   testRequirements();
   testPower();
+  testItemRates();
   await testMods();
   testGeneric();
   testCnAndFrames();
