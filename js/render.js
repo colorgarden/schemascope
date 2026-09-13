@@ -25,7 +25,7 @@ import {
   BRIDGE_NO_ARROW,
   BRIDGE_ARROW_OFFSET,
   TEAM_PALETTE,
-} from "./data.js?v=20260913r";
+} from "./data.js?v=20260913s";
 import {
   vanillaRule,
   rangeOfBlock,
@@ -45,8 +45,8 @@ import {
   sizeOfBlock,
   baseOf,
   isRotatableBlock,
-} from "./render_rules.js?v=20260913r";
-import { makeTileWorld, buildBlending } from "./blending.js?v=20260913r";
+} from "./render_rules.js?v=20260913s";
+import { makeTileWorld, buildBlending } from "./blending.js?v=20260913s";
 
 /** 仅取自有属性，避免方块名（如 "constructor"）撞上 Object.prototype 上的同名属性。 */
 function own(obj, key) {
@@ -195,10 +195,10 @@ export function bridgeRangeOf(name) {
   return br !== undefined ? br : 4;
 }
 
-/** 桥带宽度：模组 bridgeWidth 按 24px/6.5 等比，否则全局 24。 */
+/** 桥带宽度（px）：官方 ItemBridge.bridgeWidth=6.5 世界单位（×4px）；模组覆写 bridgeWidth 则按模组。 */
 export function bridgeWidthOf(name) {
-  // 所有桥（含模组桥）统一使用与原版一致的桥带宽度（BRIDGE_WIDTH），
-  // 不做按 bridgeWidth 字段的等比放宽。
+  const m = MOD_BRIDGES.get(name);
+  if (m && typeof m.bridgeWidth === "number" && m.bridgeWidth > 0) return m.bridgeWidth * 4;
   return BRIDGE_WIDTH;
 }
 

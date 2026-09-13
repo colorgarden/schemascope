@@ -4,7 +4,7 @@
 // =============================================================================
 
 // 全量官方中文名（由 bundle_zh_CN.properties 生成）
-import { CN_BLOCKS, CN_ITEMS, CN_LIQUIDS } from "./cn_data.js?v=20260913r";
+import { CN_BLOCKS, CN_ITEMS, CN_LIQUIDS } from "./cn_data.js?v=20260913s";
 
 // CDN 前缀：只用 jsdelivr 的 @master（始终取最新贴图，允许跨域）
 export const CDN_PREFIX = "https://cdn.jsdelivr.net/gh/Anuken/Mindustry@master/";
@@ -411,8 +411,8 @@ export const TEAM_PALETTE = [
 export function spriteAliasCandidates(name) {
   return [name + "-0-0", name + "-bottom", name + "-top-0"];
 }
-// 连接带宽 = 24px（用户指定）
-export const BRIDGE_WIDTH = 24;
+// 连接带宽 = 26px（官方 ItemBridge.bridgeWidth = 6.5f 世界单位 × 4px/单位；模组可覆写 bridgeWidth）
+export const BRIDGE_WIDTH = 26;
 // 桥连接透明度（用户要求降低不透明度 = 更透）
 export const BRIDGE_OPACITY = 0.5;
 
