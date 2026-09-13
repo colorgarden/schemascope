@@ -4,7 +4,7 @@
 // =============================================================================
 
 // 全量官方中文名（由 bundle_zh_CN.properties 生成）
-import { CN_BLOCKS, CN_ITEMS, CN_LIQUIDS } from "./cn_data.js?v=20260913s";
+import { CN_BLOCKS, CN_ITEMS, CN_LIQUIDS } from "./cn_data.js?v=20260913t";
 
 // CDN 前缀：只用 jsdelivr 的 @master（始终取最新贴图，允许跨域）
 export const CDN_PREFIX = "https://cdn.jsdelivr.net/gh/Anuken/Mindustry@master/";
@@ -367,8 +367,9 @@ export const POWER_LASER_COLOR = [251, 251, 247];
 // 激光透明度：源码 Renderer.laserOpacity 默认 0.5，用户要求改为不透明
 export const POWER_LASER_ALPHA = 1.0;
 export const POWER_LASER_SCALE = 0.25;
-// 光束（矩形段）总宽度（游戏像素）
-export const POWER_LASER_WIDTH = 6;
+// 光束（矩形段）quad 总宽度（游戏像素）：官方 Drawf.laser 用 Lines.stroke(12 × laserScale=0.25)=3 世界单位
+// = 12px quad；贴图不透明带约占一半 → 可见宽度 ≈6.4px（与用户截图实测 6.7px 一致）。
+export const POWER_LASER_WIDTH = 12;
 
 // 桥连接
 export const BRIDGE_BLOCKS = new Set([
@@ -411,8 +412,9 @@ export const TEAM_PALETTE = [
 export function spriteAliasCandidates(name) {
   return [name + "-0-0", name + "-bottom", name + "-top-0"];
 }
-// 连接带宽 = 26px（官方 ItemBridge.bridgeWidth = 6.5f 世界单位 × 4px/单位；模组可覆写 bridgeWidth）
-export const BRIDGE_WIDTH = 26;
+// 桥带 quad 宽度（游戏像素）：与带桥贴图同像素宽（贴图 32px、不透明带 24px）→ 可见带宽 24px，
+// 与两端端帽的带面无缝衔接（quad=32 时整张贴图 1:1，不压缩）。模组 bridgeWidth 覆写时按 bridgeWidth×4。
+export const BRIDGE_WIDTH = 32;
 // 桥连接透明度（用户要求降低不透明度 = 更透）
 export const BRIDGE_OPACITY = 0.5;
 
