@@ -25,7 +25,7 @@ js/inflate.js         zlib 解压封装（DecompressionStream）
 js/parser.js          容器解析 + TypeIO + contentMap + 处理器逻辑提取
 js/render.js          渲染器（与同项目 Python 版 msch.py 像素级一致）
 js/blending.js        邻居拼接 Autotiler（传送带/管道/导管，纯函数可单测）
-js/vanilla_blocks.js  官方方块类型/属性表（由 tools/gen_vanilla_blocks.py 生成）
+js/vanilla_blocks.js  官方方块类型/属性表（开发侧脚本生成，不随仓库发布）
 js/vanilla_turrets.js 官方炮塔 DrawTurret/RegionPart 部件表（同上生成）
 js/icons.js           PUA 内容图标解析 + richText 富文本
 js/icons_data.js      PUA 码点表（由 icons.properties 生成）
@@ -40,9 +40,6 @@ js/requirements.js    蓝图总耗材计算（可单测）
 js/requirements_data.js 方块耗材表 BLOCK_REQUIREMENTS + 物品中文名 ITEM_CN
 js/main.js            入口 UI 逻辑（入口带 ?v=<VER> 查询做缓存穿透）
 sprite_index.json     贴图名 → 相对路径索引（blocks/items/aux/all）
-test/parse_test.mjs   Node 一致性测试 + 渲染器/PUA 单测
-tools/gen_vanilla_blocks.py 从官方 Blocks.java 生成 vanilla_blocks.js + vanilla_turrets.js（开发侧）
-tools/vanilla_type_flags.py 官方类级默认属性（gen 脚本 --src-root 可重烘焙，开发侧）
 package.json          {"type":"module"}
 ```
 
@@ -355,19 +352,16 @@ python3 -m http.server 8000
 直接双击 `index.html`（`file://`）也能打开界面，但浏览器会因同源策略拦截
 本地文件读取；请务必用上面的 `http.server` 方式预览。
 
-## 九、运行测试
+## 九、运行测试（开发侧，不随仓库发布）
+
+`test/` 与 `tools/` 为开发脚本，已从仓库移除并由 `.gitignore` 忽略，仅在本地工作区保留：
 
 ```bash
-node --check js/data.js js/cn_data.js js/inflate.js js/parser.js js/render.js js/blending.js js/render_rules.js js/vanilla_blocks.js js/vanilla_turrets.js js/icons.js js/icons_data.js js/prefetch.js js/cache.js js/sources.js js/zip.js js/mod.js js/requirements.js js/requirements_data.js js/names.js js/history.js js/main.js
+node --check js/*.js
 node test/parse_test.mjs
 ```
 
-`test/parse_test.mjs` 会读取本地测试样本（路径在文件顶部，可自行修改），
-逐字段比对解析结果，并运行渲染器关键算法单测
-（footprint/中心坐标、多层叠加、描边膨胀、flat-top 光束采样、桥配对、
-邻居拼接 buildBlending 的直/弯/T/十字与旋转不变性、炮塔 base/本体/部件合成、
-原版全量贴图请求/识别审查）
-与 PUA 图标单测（`resolveIcon` 锚点、`richText`/`plainTextWithIcons`）。
+测试会读取本地样本与模组 zip（路径在文件顶部，可自行修改），覆盖解析/渲染/图标/模组/电力与物品速率等断言。
 需要 Node 18+（内置 `DecompressionStream`）。
 
 ## 十、浏览器要求
