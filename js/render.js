@@ -21,8 +21,10 @@ import {
   BRIDGE_RANGE,
   BRIDGE_WIDTH,
   BRIDGE_OPACITY,
+  BRIDGE_ARROW_SPACING,
+  BRIDGE_ARROW_OFFSET,
   TEAM_PALETTE,
-} from "./data.js?v=20260913m";
+} from "./data.js?v=20260913n";
 import {
   vanillaRule,
   rangeOfBlock,
@@ -42,8 +44,8 @@ import {
   sizeOfBlock,
   baseOf,
   isRotatableBlock,
-} from "./render_rules.js?v=20260913m";
-import { makeTileWorld, buildBlending } from "./blending.js?v=20260913m";
+} from "./render_rules.js?v=20260913n";
+import { makeTileWorld, buildBlending } from "./blending.js?v=20260913n";
 
 /** 仅取自有属性，避免方块名（如 "constructor"）撞上 Object.prototype 上的同名属性。 */
 function own(obj, key) {
@@ -1122,6 +1124,8 @@ export function bridgePairs(entries) {
   const lookup = new Map();
   for (const e of bridges) lookup.set(key(e), e);
   const claimed = new Set();
+  const pairKeys = new Set();
+  const targeted = new Set();
   const pairs = [];
 
   const rotations = (dx, dy) => [
@@ -1132,6 +1136,7 @@ export function bridgePairs(entries) {
   ];
 
   for (const e of bridges) {
+    if (claimed.has(key(e))) continue;
     const t = e.tile;
     const rng = bridgeRangeOf(t.block);
     const cfg = t.config;
@@ -1140,16 +1145,15 @@ export function bridgePairs(entries) {
     for (const [rx, ry] of rotations(dx, dy)) {
       if (Math.abs(rx) <= rng && Math.abs(ry) <= rng && (rx === 0 || ry === 0)) {
         const te = lookup.get(`${t.x + rx},${t.y + ry}`);
-        if (
-          te &&
-          te.tile.block === t.block &&
-          key(te) !== key(e) &&
-          !claimed.has(key(e)) &&
-          !claimed.has(key(te))
-        ) {
+        // 官方允许多个桥指向同一目标（一对多汇入）：只占用「源」，不占用目标
+        if (te && te.tile.block === t.block && key(te) !== key(e)) {
+          const pk = [key(e), key(te)].sort().join("|");
           claimed.add(key(e));
-          claimed.add(key(te));
-          pairs.push([e, te]);
+          targeted.add(key(te));
+          if (!pairKeys.has(pk)) {
+            pairKeys.add(pk);
+            pairs.push([e, te]);
+          }
           break;
         }
       }
@@ -1157,8 +1161,10 @@ export function bridgePairs(entries) {
   }
 
   for (const e of bridges) {
-    if (claimed.has(key(e))) continue;
+    if (claimed.has(key(e)) || targeted.has(key(e))) continue;
     const t = e.tile;
+    // 有 point2 配置的桥已在上面处理（指向图外的悬空链接按原版同样不绘制）
+    if (t.config_type === "point2" && t.config) continue;
     const rng = bridgeRangeOf(t.block);
     let best = null;
     let bestd = 1 << 30;
@@ -1211,10 +1217,26 @@ export function drawBridges(buf, cw, ch, layout, sprites, bridgeOpacity = BRIDGE
     if (body) {
       drawBeam(buf, cw, ch, l1x, l1y, l2x, l2y, body.rgba, body.w, body.h, bridgeWidthOf(a.tile.block), [255, 255, 255], bridgeOpacity);
     }
+
+    // 方向索引（官方 relativeTo）：0=东 1=北 2=西 3=南（本渲染器 y 向下，北即 -y）
+    const i = dx === 0 ? (dy < 0 ? 1 : 3) : dx > 0 ? 0 : 2;
+
+    // 两端端帽（官方 ItemBridge.draw：endRegion 在两端，i*90+90 / i*90+270）
+    const end = getSprite(sprites, a.tile.block + "-end", true);
+    if (end) {
+      blitRotated(buf, cw, ch, end.rgba, end.w, end.h, ax, ay, 1.0, i * 90 + 90, [255, 255, 255], bridgeOpacity);
+      blitRotated(buf, cw, ch, end.rgba, end.w, end.h, bx, by, 1.0, i * 90 + 270, [255, 255, 255], bridgeOpacity);
+    }
+
+    // 沿途周期箭头（官方：dist=max(|Δx|,|Δy|)-1 格；间距 4 单位=16px，偏移 2 单位=8px）
     const arrow = getSprite(sprites, a.tile.block + "-arrow", true);
     if (arrow) {
-      const ang = (180 / Math.PI) * Math.atan2(dy, dx);
-      blitRotated(buf, cw, ch, arrow.rgba, arrow.w, arrow.h, (ax + bx) / 2.0, (ay + by) / 2.0, 1.0, ang, [255, 255, 255], bridgeOpacity);
+      const tiles = Math.max(Math.abs(b.tile.x - a.tile.x), Math.abs(b.tile.y - a.tile.y));
+      const count = Math.max(0, Math.floor(((tiles - 1) * TILE) / BRIDGE_ARROW_SPACING));
+      for (let k = 0; k < count; k++) {
+        const off = TILE / 2 + k * BRIDGE_ARROW_SPACING + BRIDGE_ARROW_OFFSET;
+        blitRotated(buf, cw, ch, arrow.rgba, arrow.w, arrow.h, ax + ux * off, ay + uy * off, 1.0, i * 90, [255, 255, 255], bridgeOpacity);
+      }
     }
   }
 }

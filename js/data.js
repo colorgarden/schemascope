@@ -4,7 +4,7 @@
 // =============================================================================
 
 // 全量官方中文名（由 bundle_zh_CN.properties 生成）
-import { CN_BLOCKS, CN_ITEMS, CN_LIQUIDS } from "./cn_data.js?v=20260913m";
+import { CN_BLOCKS, CN_ITEMS, CN_LIQUIDS } from "./cn_data.js?v=20260913n";
 
 // CDN 前缀：只用 jsdelivr 的 @master（始终取最新贴图，允许跨域）
 export const CDN_PREFIX = "https://cdn.jsdelivr.net/gh/Anuken/Mindustry@master/";
@@ -383,7 +383,11 @@ export const BRIDGE_BLOCKS = new Set([
   "phase-bridge",
   "reinforced-bridge",
 ]);
-export const BRIDGE_RANGE = { "phase-conduit": 12, "phase-bridge": 12 };
+export const BRIDGE_RANGE = { "phase-conveyor": 12, "phase-conduit": 12, "phase-bridge": 12 };
+
+// 桥的沿途箭头（官方 ItemBridge：arrowSpacing=4 世界单位=16px、arrowOffset=2 单位=8px）
+export const BRIDGE_ARROW_SPACING = 16;
+export const BRIDGE_ARROW_OFFSET = 8;
 
 /**
  * 默认队伍（sharded，玩家默认"黄队"）的官方调色板。
