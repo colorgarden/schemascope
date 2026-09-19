@@ -525,29 +525,64 @@ h1 .sub {
   white-space: nowrap;
 }
 
-/* 原生下拉：黑色井 + 4px 钢框，悬停 / 聚焦框变金 */
-select {
+/* 原生下拉：clip-path 在 <select> 上不生效（引擎按替换元素处理），
+   故由外壳承载八边形钢框：外壳 = 4px 钢框 + 内层黑井，select 自身透明填充 */
+.select-well {
+  position: relative;
+  display: inline-block;
   height: var(--ctl-h);
-  background-color: var(--well);
-  color: var(--text);
-  border: 4px solid var(--frame);
-  border-radius: 0;
+  background-color: var(--frame);
   clip-path: var(--oct-btn);
-  padding: 0 12px;
-  font-size: 15px;
-  outline: none;
+  isolation: isolate;
+  vertical-align: middle;
 }
 
-select:hover,
-select:focus {
-  border-color: var(--accent);
+.select-well::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  background-color: var(--well);
+  clip-path: var(--oct-inset);
+  z-index: -1;
+}
+
+.select-well::after {
+  content: "";
+  position: absolute;
+  right: 11px;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin-top: -4px;
+  background-color: var(--accent);
+  clip-path: var(--oct-dia);
+  pointer-events: none;
+}
+
+.select-well:hover,
+.select-well:focus-within {
+  background-color: var(--accent);
+}
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 100%;
+  width: 100%;
+  background-color: transparent;
+  color: var(--text);
+  border: 0;
+  border-radius: 0;
+  padding: 0 30px 0 12px;
+  font-size: 15px;
+  outline: none;
+  cursor: pointer;
 }
 
 option {
   background-color: var(--well);
   color: var(--text);
 }
-
 /* 透明度滑杆：钢色轨道 + 金色八边形滑块 */
 .opacity-row {
   display: flex;
