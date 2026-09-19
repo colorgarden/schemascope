@@ -1526,7 +1526,10 @@ html.desktop .wrap {
 }
 
 .msel-opt[aria-selected="true"] {
-  color: var(--accent);
+  /* 当前项：白字 + 浅金底 + 金色菱形标记。
+     注意不能用金色文字：悬停/高亮时底色是金色，金底金字会不可读。 */
+  background-color: rgba(255, 211, 127, 0.14);
+  color: var(--text);
 }
 
 /* 当前值：金色小菱形标记（--oct-dia，无圆角 / 无阴影 / 无渐变） */
@@ -1546,6 +1549,13 @@ html.desktop .wrap {
 .msel-opt.is-active::after,
 .msel-opt[aria-selected="true"]:hover::after {
   background-color: var(--well);
+}
+
+/* 当前项被悬停/高亮键盘选中时，必须覆盖上面的 [aria-selected] 文字色 → 金底黑字 */
+.msel-opt[aria-selected="true"]:hover,
+.msel-opt[aria-selected="true"].is-active {
+  background-color: var(--accent);
+  color: #000;
 }
 
 /* =============================================================================
