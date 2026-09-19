@@ -9,7 +9,7 @@ canvas 渲染（多层贴图、描边、电力激光、桥连接、原版背景�
 - 所有资源均为**相对路径**，部署在子路径（如 `https://用户名.github.io/仓库名/`）也能正常工作。
 
 > **声明**：本项目由 **AI 生成**（AI 辅助设计与编写），仅供学习与个人使用。
-> **许可**：本仓库代码为 MIT。Mindustry 的原版贴图与图标字体（GPL-3.0）**不随本仓库分发**，
+> **许可**：本仓库代码为 **GPL-3.0-or-later**（详见根目录 [LICENSE](LICENSE)，正文取自 FSF 官方发行）。Mindustry 的原版贴图与图标字体（GPL-3.0）**不随本仓库分发**，
 > 均由页面在**运行时**从官方仓库 `Anuken/Mindustry` 拉取（镜像/CDN）；可选的
 > `assets/sprites/` 自托管贴图由使用者自行提供。
 
@@ -144,7 +144,7 @@ UI emoji → 去掉。
 - **运行时图标**：内容图标的贴图由 `resolveIcon` 解析后直接使用官方原贴图 URL
   （本地 `assets/sprites/` 自托管优先，否则 CDN 镜像）；`js/icons_data.js` 的
   `ICON_BY_CODE`（626 条）为纯数据表。**不再随仓库导出/分发图标 PNG**（原导出自
-  GPL 资源，与 MIT 不兼容）。
+  GPL 资源，一律运行时从官方仓库拉取）。
 - **耗材 `js/requirements_data.js`**：`BLOCK_REQUIREMENTS`（231 个方块）来自 Mindustry
   `Blocks.java` 的 `requirements(...)`，与游戏 `Schematic.requirements()` 一致
   （把每个方块的 requirements 直接累加，无倍率）；`ITEM_CN` 为官方中文名。
@@ -358,6 +358,7 @@ Chrome / Edge / Safari / Firefox。若浏览器过旧，页面会给出明确中
 
 ## 十一、许可证
 
-**MIT License**（详见根目录 [LICENSE](LICENSE) 文件）。
+**GNU General Public License v3.0 or later（GPL-3.0-or-later）**，详见根目录 [LICENSE](LICENSE) 文件
+（GPLv3 正文取自 FSF 官方 GNU 发行包，未从任何第三方仓库复制）。
 
-本项目由 **AI 生成**，可自由使用、修改与分发，请保留版权声明。
+本项目由 **AI 生成**：可自由使用、修改与分发；分发衍生作品时须同样以 GPL-3.0 开源并保留版权声明。
