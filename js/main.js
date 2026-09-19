@@ -10,23 +10,23 @@ import {
   AUX_PATHS,
   DEFAULT_SCALE,
   DEFAULT_PAD,
-} from "./data.js?v=20260913u";
-import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913u";
-import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913u";
-import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock, isAutotilerBlock, isTurretBlock, isFactoryBlock, isReconstructorBlock, factorySpriteNames, reconstructorSpriteNames, sizeOfBlock, turretSpriteNames, autotilerSpriteNames, selectMissingSprites } from "./render_rules.js?v=20260913u";
-import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260913u";
-import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913u";
-import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913u";
-import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913u";
-import { requirementsList, computePower, computeItemRates, autoFixed } from "./requirements.js?v=20260913u";
-import { BLOCK_REQUIREMENTS, ITEM_CN } from "./requirements_data.js?v=20260913u";
-import { VANILLA_BLOCKS, patchVanillaDef, patchVanillaRates, patchVanillaRequirements } from "./vanilla_blocks.js?v=20260913u";
-import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913u";
-import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913u";
-import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913u";
+} from "./data.js?v=20260913v";
+import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260913v";
+import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260913v";
+import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock, isAutotilerBlock, isTurretBlock, isFactoryBlock, isReconstructorBlock, factorySpriteNames, reconstructorSpriteNames, sizeOfBlock, turretSpriteNames, autotilerSpriteNames, selectMissingSprites } from "./render_rules.js?v=20260913v";
+import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260913v";
+import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260913v";
+import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260913v";
+import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260913v";
+import { requirementsList, computePower, computeItemRates, autoFixed } from "./requirements.js?v=20260913v";
+import { BLOCK_REQUIREMENTS, ITEM_CN } from "./requirements_data.js?v=20260913v";
+import { VANILLA_BLOCKS, patchVanillaDef, patchVanillaRates, patchVanillaRequirements } from "./vanilla_blocks.js?v=20260913v";
+import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260913v";
+import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260913v";
+import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260913v";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260913u";
+const APP_VERSION = "20260913v";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -480,6 +480,27 @@ async function loadIconFont() {
     document.fonts.add(ff);
   } catch (e) {
     // 忽略：无字体时降级展示
+  }
+}
+
+/**
+ * 懒加载 Mindustry UI 字体（GPL 资源不随仓库分发，运行时从官方仓库拉取），
+ * 注册为 "mindustry-font"；失败静默降级到 CSS 里的等宽 / CJK 回退字体。
+ * 仅在首屏渲染完成后空闲时调用，绝不阻塞渲染。
+ */
+async function loadMindustryFont() {
+  try {
+    if (typeof FontFace === "undefined" || !document.fonts) return;
+    const resp = await fetch(
+      "https://raw.githubusercontent.com/Anuken/Mindustry/master/core/assets/fonts/font.woff"
+    );
+    if (!resp || !resp.ok) return;
+    const buf = await resp.arrayBuffer();
+    const ff = new FontFace("mindustry-font", buf);
+    await ff.load();
+    document.fonts.add(ff);
+  } catch (e) {
+    // 忽略：无字体时回退到本地字体栈
   }
 }
 
@@ -1902,4 +1923,11 @@ if (els.clearCache) {
   history = loadHistory();
   renderHistory();
   setStatus("");
+  // 首屏渲染完成后空闲时再拉取 Mindustry 字体，避免与贴图加载争抢带宽 / 阻塞渲染
+  const kickFont = () => { loadMindustryFont(); };
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(kickFont, { timeout: 3000 });
+  } else {
+    setTimeout(kickFont, 1200);
+  }
 })();
