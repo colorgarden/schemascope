@@ -1519,20 +1519,30 @@ html.desktop .wrap {
   cursor: pointer;
 }
 
+/* 悬停 / 键盘高亮：浅金底 + 4px 金色左侧条（白字）——与「当前项」的实心金底明确区分 */
 .msel-opt:hover,
 .msel-opt.is-active {
+  background-color: rgba(255, 211, 127, 0.16);
+  color: var(--text);
+}
+
+.msel-opt:hover::before,
+.msel-opt.is-active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background-color: var(--accent);
+}
+
+/* 当前项：实心金底 + 黑字 + 黑色菱形（对齐原版 .checked 的「选中=实心金」约定） */
+.msel-opt[aria-selected="true"] {
   background-color: var(--accent);
   color: #000;
 }
 
-.msel-opt[aria-selected="true"] {
-  /* 当前项：白字 + 浅金底 + 金色菱形标记。
-     注意不能用金色文字：悬停/高亮时底色是金色，金底金字会不可读。 */
-  background-color: rgba(255, 211, 127, 0.14);
-  color: var(--text);
-}
-
-/* 当前值：金色小菱形标记（--oct-dia，无圆角 / 无阴影 / 无渐变） */
 .msel-opt[aria-selected="true"]::after {
   content: "";
   position: absolute;
@@ -1541,21 +1551,8 @@ html.desktop .wrap {
   width: 8px;
   height: 8px;
   margin-top: -4px;
-  background-color: var(--accent);
-  clip-path: var(--oct-dia);
-}
-
-/* 金色底上的菱形改用井底色，避免金叠金不可见 */
-.msel-opt.is-active::after,
-.msel-opt[aria-selected="true"]:hover::after {
   background-color: var(--well);
-}
-
-/* 当前项被悬停/高亮键盘选中时，必须覆盖上面的 [aria-selected] 文字色 → 金底黑字 */
-.msel-opt[aria-selected="true"]:hover,
-.msel-opt[aria-selected="true"].is-active {
-  background-color: var(--accent);
-  color: #000;
+  clip-path: var(--oct-dia);
 }
 
 /* =============================================================================
