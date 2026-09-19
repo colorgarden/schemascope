@@ -1421,3 +1421,163 @@ html.desktop footer {
 html.desktop .wrap {
   min-width: 900px;
 }
+
+/* =============================================================================
+   自定义下拉（.msel-*）
+   原生 <select> 仅作数据源：视觉隐藏但保留在文档流中（若 position:absolute 会让
+   .select-well 宽度塌缩为 0，无法再用选项文本撑出与按钮一致的宽度）。
+   展开面板 = body 级 position:fixed 黑井 + 八边形钢框，替代 OS 原生弹层。
+   面板外层 .msel-list 承载钢框 + 黑井且不滚动；内层 .msel-scroll 滚动选项，
+   这样滚动时黑井/钢框不会被滚出（绝对定位伪元素会随内容滚动）。
+   ============================================================================= */
+.select-well select {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 封闭态：与 .btn 完全同尺寸；复用 .select-well 的钢框 / 黑井 / 金色菱形 */
+.msel-trigger {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 30px 0 18px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.msel-trigger:focus {
+  outline: none;
+}
+
+.msel-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 展开面板：4px 钢框（外层背景 + --oct-btn）内嵌黑井（::before + --oct-inset） */
+.msel-list {
+  position: fixed;
+  z-index: 200;
+  display: none;
+  isolation: isolate;
+  background-color: var(--frame);
+  clip-path: var(--oct-btn);
+  padding: 4px;
+  color: var(--text);
+}
+
+.msel-list.is-open {
+  display: block;
+}
+
+.msel-list::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-color: var(--well);
+  clip-path: var(--oct-inset);
+  z-index: -1;
+}
+
+.msel-scroll {
+  max-height: min(280px, 50vh);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--frame) var(--well);
+}
+
+.msel-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.msel-scroll::-webkit-scrollbar-track {
+  background: var(--well);
+}
+
+.msel-scroll::-webkit-scrollbar-thumb {
+  background: var(--frame);
+}
+
+.msel-opt {
+  position: relative;
+  padding: 10px 18px;
+  font-size: 15px;
+  line-height: 1.2;
+  color: var(--text);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.msel-opt:hover,
+.msel-opt.is-active {
+  background-color: var(--accent);
+  color: #000;
+}
+
+.msel-opt[aria-selected="true"] {
+  color: var(--accent);
+}
+
+/* 当前值：金色小菱形标记（--oct-dia，无圆角 / 无阴影 / 无渐变） */
+.msel-opt[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  background-color: var(--accent);
+  clip-path: var(--oct-dia);
+}
+
+/* 金色底上的菱形改用井底色，避免金叠金不可见 */
+.msel-opt.is-active::after,
+.msel-opt[aria-selected="true"]:hover::after {
+  background-color: var(--well);
+}
+
+/* =============================================================================
+   镜像检测 pending 态：结果逐个返回；旋转菱形对应参考里的加载动画（icon-turn）
+   ============================================================================= */
+.src-badge.pending {
+  cursor: progress;
+}
+
+.src-badge.pending .src-ms {
+  color: var(--accent);
+}
+
+.src-badge.pending .src-ms::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  vertical-align: -1px;
+  background-color: var(--accent);
+  clip-path: var(--oct-dia);
+  animation: src-spin 1s linear infinite;
+}
+
+@keyframes src-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .src-badge.pending .src-ms::before {
+    animation: none;
+  }
+}

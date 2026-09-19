@@ -146,15 +146,24 @@ export function sourceOrder(list = DEFAULT_SOURCES) {
   return arr;
 }
 
-/** 带超时的 fetch。 */
-export async function fetchTimeout(url, ms, fetchImpl = fetch) {
+/** 带超时的 fetch；init 可传 cache / headers 等额外参数。 */
+export async function fetchTimeout(url, ms, fetchImpl = fetch, init = undefined) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
   try {
-    return await fetchImpl(url, { signal: ctrl.signal });
+    return await fetchImpl(url, { ...(init || {}), signal: ctrl.signal });
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * 探测用 URL：追加唯一时间戳 + 随机串，绕开 HTTP / CDN 缓存。
+ * 否则第二次点「检测镜像」会直接命中缓存，耗时恒为个位数（用户反馈的 bug）。
+ */
+function probeBustUrl(base, probePath) {
+  const sep = probePath.includes("?") ? "&" : "?";
+  return `${base}${probePath}${sep}t=${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 let probePromise = null;
@@ -194,17 +203,34 @@ export async function probeAllSources({
   timeoutMs = 4000,
   probePath = PROBE_PATH,
   fetchImpl = fetch,
+  bust = true,
+  onResult = null,
 } = {}) {
   return Promise.all(
     defs.map(async (def) => {
       const t0 = Date.now();
+      let r;
       try {
-        const resp = await fetchTimeout(def.url + probePath, timeoutMs, fetchImpl);
+        const resp = await fetchTimeout(
+          bust ? probeBustUrl(def.url, probePath) : def.url + probePath,
+          timeoutMs,
+          fetchImpl,
+          bust ? { cache: "no-store" } : undefined
+        );
         const ok = !!(resp && resp.ok);
-        return { key: def.key, label: def.label, url: def.url, ok, ms: Date.now() - t0 };
+        r = { key: def.key, label: def.label, url: def.url, ok, ms: Date.now() - t0 };
       } catch (e) {
-        return { key: def.key, label: def.label, url: def.url, ok: false, ms: Date.now() - t0 };
+        r = { key: def.key, label: def.label, url: def.url, ok: false, ms: Date.now() - t0 };
       }
+      // 流式回调：每个源一有结果就通知调用方（UI 逐个更新，不再等全部完成）
+      if (typeof onResult === "function") {
+        try {
+          onResult(r);
+        } catch (e) {
+          // UI 回调异常不影响探测
+        }
+      }
+      return r;
     })
   );
 }

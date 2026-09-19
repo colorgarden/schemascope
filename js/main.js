@@ -10,23 +10,23 @@ import {
   AUX_PATHS,
   DEFAULT_SCALE,
   DEFAULT_PAD,
-} from "./data.js?v=20260920e";
-import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260920e";
-import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260920e";
-import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock, isAutotilerBlock, isTurretBlock, isFactoryBlock, isReconstructorBlock, factorySpriteNames, reconstructorSpriteNames, sizeOfBlock, turretSpriteNames, autotilerSpriteNames, selectMissingSprites } from "./render_rules.js?v=20260920e";
-import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260920e";
-import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260920e";
-import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260920e";
-import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260920e";
-import { requirementsList, computePower, computeItemRates, autoFixed } from "./requirements.js?v=20260920e";
-import { BLOCK_REQUIREMENTS, ITEM_CN } from "./requirements_data.js?v=20260920e";
-import { VANILLA_BLOCKS, patchVanillaDef, patchVanillaRates, patchVanillaRequirements } from "./vanilla_blocks.js?v=20260920e";
-import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260920e";
-import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260920e";
-import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260920e";
+} from "./data.js?v=20260920f";
+import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260920f";
+import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260920f";
+import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock, isAutotilerBlock, isTurretBlock, isFactoryBlock, isReconstructorBlock, factorySpriteNames, reconstructorSpriteNames, sizeOfBlock, turretSpriteNames, autotilerSpriteNames, selectMissingSprites } from "./render_rules.js?v=20260920f";
+import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260920f";
+import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260920f";
+import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260920f";
+import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260920f";
+import { requirementsList, computePower, computeItemRates, autoFixed } from "./requirements.js?v=20260920f";
+import { BLOCK_REQUIREMENTS, ITEM_CN } from "./requirements_data.js?v=20260920f";
+import { VANILLA_BLOCKS, patchVanillaDef, patchVanillaRates, patchVanillaRequirements } from "./vanilla_blocks.js?v=20260920f";
+import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260920f";
+import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260920f";
+import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260920f";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260920e";
+const APP_VERSION = "20260920f";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -207,28 +207,58 @@ async function applySourceChoice(key) {
 }
 
 /** 并行探测全部源，结果渲染为可点击徽章。 */
-async function runSourceProbe() {
+let probeRunning = false;
+
+/** 检测中：先一次性渲染全部 pending 徽章（结果随后逐个就地更新，不再等全部完成）。 */
+function renderProbePending() {
+  const frag = document.createDocumentFragment();
+  for (const def of SOURCE_DEFS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "src-badge pending";
+    b.dataset.key = def.key;
+    b.title = def.url;
+    b.innerHTML = esc(def.label) + `<span class="src-ms">检测中…</span>`;
+    frag.appendChild(b);
+  }
+  els.sourceBadges.replaceChildren(frag);
+}
+
+/** 某个源一出结果就更新对应徽章（onResult 回调，非阻塞）。 */
+function updateProbeBadge(r) {
   if (!els.sourceBadges) return;
-  els.sourceBadges.replaceChildren();
-  setStatus("检测镜像中…");
-  try {
-    const results = await probeAllSources({ timeoutMs: 4000 });
-    const frag = document.createDocumentFragment();
-    for (const r of results) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "src-badge " + (r.ok ? "ok" : "bad");
-      b.dataset.key = r.key;
-      b.title = r.url;
-      b.innerHTML =
-        esc(r.label) + `<span class="src-ms">${r.ok ? r.ms + "ms ✓" : "超时 ✗"}</span>`;
-      frag.appendChild(b);
-    }
-    els.sourceBadges.replaceChildren(frag);
+  for (const b of els.sourceBadges.querySelectorAll(".src-badge")) {
+    if (b.dataset.key !== r.key) continue;
+    b.className = "src-badge " + (r.ok ? "ok" : "bad");
+    b.title = r.url;
+    b.innerHTML =
+      esc(r.label) + `<span class="src-ms">${r.ok ? r.ms + "ms ✓" : "超时 ✗"}</span>`;
     markActiveBadge(getChoiceKey());
-    setStatus("镜像检测完成（点击徽章可选用该源）。");
+    return;
+  }
+}
+
+/**
+ * 并行检测全部镜像：徽章先进入 pending 态，随后逐个返回结果；检测期间按钮禁用防重入。
+ * 源文件探测带时间戳 + no-store，避免第二次点击命中缓存导致耗时恒为个位数。
+ */
+async function runSourceProbe() {
+  if (!els.sourceBadges || probeRunning) return;
+  probeRunning = true;
+  if (els.sourceProbe) els.sourceProbe.disabled = true;
+  renderProbePending();
+  markActiveBadge(getChoiceKey());
+  setStatus(`检测镜像中…共 ${SOURCE_DEFS.length} 个源，结果逐个返回。`);
+  try {
+    const results = await probeAllSources({ timeoutMs: 4000, onResult: updateProbeBadge });
+    const okN = results.filter((r) => r.ok).length;
+    markActiveBadge(getChoiceKey());
+    setStatus(`镜像检测完成：${okN}/${results.length} 个可用（点击徽章可选用该源）。`);
   } catch (e) {
     showError("镜像检测失败：" + e.message);
+  } finally {
+    probeRunning = false;
+    if (els.sourceProbe) els.sourceProbe.disabled = false;
   }
 }
 
@@ -1678,7 +1708,7 @@ if (els.sourceProbe) els.sourceProbe.addEventListener("click", runSourceProbe);
 if (els.sourceBadges) {
   els.sourceBadges.addEventListener("click", (e) => {
     const b = e.target.closest(".src-badge");
-    if (b) applySourceChoice(b.dataset.key);
+    if (b && !b.classList.contains("pending")) applySourceChoice(b.dataset.key);
   });
 }
 
@@ -1880,6 +1910,293 @@ if (els.clearCache) {
   });
 }
 
+// -----------------------------------------------------------------------------
+// 自定义下拉（.msel-*）
+// 原生 <select> 仍是唯一数据源：保留在 DOM 内、视觉隐藏，所有读写继续走它，
+// 既有 change 监听 / populateSourceSelect / applySourceChoice 完全不变。
+// 展开面板挂到 <body>（.select-well 有 clip-path，无法容纳 position:fixed 面板）。
+// -----------------------------------------------------------------------------
+const mselInstances = [];
+let mselSeq = 0;
+
+/** 由原生 select 重建选项行（populateSourceSelect 的 replaceChildren 后调用）。 */
+function mselBuildRows(inst) {
+  const frag = document.createDocumentFragment();
+  inst.rows = [];
+  Array.from(inst.select.options).forEach((opt, i) => {
+    const row = document.createElement("div");
+    row.className = "msel-opt";
+    row.setAttribute("role", "option");
+    row.dataset.v = opt.value;
+    row.textContent = opt.textContent;
+    row.id = inst.id + "-o" + i;
+    // 阻止按下时焦点离开触发器（点击仍会触发）
+    row.addEventListener("pointerdown", (e) => e.preventDefault());
+    row.addEventListener("click", () => mselChoose(inst, row.dataset.v));
+    frag.appendChild(row);
+    inst.rows.push(row);
+  });
+  inst.scroll.replaceChildren(frag);
+  inst.activeIndex = -1;
+}
+
+/** 原生 select → 触发标签 / 行选中态 的单向同步（唯一数据源始终是原生 select）。 */
+function mselSync(inst) {
+  const sel = inst.select;
+  const opts = sel.options;
+  if (
+    inst.rows.length !== opts.length ||
+    inst.rows.some((r, i) => r.dataset.v !== opts[i].value || r.textContent !== opts[i].textContent)
+  ) {
+    mselBuildRows(inst);
+  }
+  const cur = sel.selectedIndex >= 0 ? opts[sel.selectedIndex] : null;
+  inst.label.textContent = cur ? cur.textContent : "";
+  for (const r of inst.rows) {
+    r.setAttribute("aria-selected", r.dataset.v === sel.value ? "true" : "false");
+  }
+  if (inst.activeIndex >= inst.rows.length) inst.activeIndex = inst.rows.length - 1;
+}
+
+function mselSetActive(inst, idx) {
+  if (!inst.rows.length) return;
+  const next = Math.max(0, Math.min(inst.rows.length - 1, idx));
+  if (inst.activeIndex >= 0 && inst.rows[inst.activeIndex]) {
+    inst.rows[inst.activeIndex].classList.remove("is-active");
+  }
+  inst.activeIndex = next;
+  const row = inst.rows[next];
+  row.classList.add("is-active");
+  inst.trigger.setAttribute("aria-activedescendant", row.id);
+  row.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
+function mselClose(inst) {
+  if (!inst.open) return;
+  inst.open = false;
+  inst.list.classList.remove("is-open");
+  inst.trigger.setAttribute("aria-expanded", "false");
+  inst.trigger.removeAttribute("aria-activedescendant");
+  if (inst.activeIndex >= 0 && inst.rows[inst.activeIndex]) {
+    inst.rows[inst.activeIndex].classList.remove("is-active");
+  }
+  inst.activeIndex = -1;
+}
+
+function mselCloseAll(except) {
+  for (const inst of mselInstances) if (inst !== except) mselClose(inst);
+}
+
+/** 以触发器为锚点定位面板（优先下方，越界翻上方，水平钳制 8px）。 */
+function mselOpen(inst) {
+  if (inst.open) return;
+  mselCloseAll(inst);
+  inst.open = true;
+  inst.list.classList.add("is-open");
+  inst.trigger.setAttribute("aria-expanded", "true");
+
+  const r = inst.trigger.getBoundingClientRect();
+  inst.list.style.minWidth = Math.ceil(r.width) + "px";
+  inst.list.style.left = "0px";
+  inst.list.style.top = "0px";
+  const h = inst.list.offsetHeight;
+  const w = inst.list.offsetWidth;
+  let top = r.bottom + 4;
+  if (top + h > window.innerHeight - 8) {
+    const above = r.top - h - 4;
+    top = above >= 8 ? above : Math.max(8, window.innerHeight - 8 - h);
+  }
+  const left = Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - w - 8));
+  inst.list.style.left = Math.round(left) + "px";
+  inst.list.style.top = Math.round(top) + "px";
+
+  mselSetActive(inst, inst.select.selectedIndex >= 0 ? inst.select.selectedIndex : 0);
+}
+
+function mselChoose(inst, value) {
+  inst.select.value = value; // 触发实例 setter → 同步标签
+  inst.select.dispatchEvent(new Event("change", { bubbles: true }));
+  mselSync(inst);
+  mselClose(inst);
+  inst.trigger.focus();
+}
+
+function mselOnTriggerKey(inst, e) {
+  const k = e.key;
+  if (k === "Enter" || k === " " || k === "Spacebar") {
+    e.preventDefault();
+    e.stopPropagation();
+    if (inst.open) {
+      if (inst.activeIndex >= 0) mselChoose(inst, inst.rows[inst.activeIndex].dataset.v);
+      else mselClose(inst);
+    } else {
+      mselOpen(inst);
+    }
+    return;
+  }
+  if (k === "ArrowDown") {
+    e.preventDefault();
+    if (!inst.open) mselOpen(inst);
+    else mselSetActive(inst, inst.activeIndex + 1);
+    return;
+  }
+  if (k === "ArrowUp") {
+    e.preventDefault();
+    if (!inst.open) mselOpen(inst);
+    else mselSetActive(inst, inst.activeIndex - 1);
+    return;
+  }
+  if (k === "Home") {
+    if (inst.open) {
+      e.preventDefault();
+      mselSetActive(inst, 0);
+    }
+    return;
+  }
+  if (k === "End") {
+    if (inst.open) {
+      e.preventDefault();
+      mselSetActive(inst, inst.rows.length - 1);
+    }
+    return;
+  }
+  if (k === "Escape") {
+    if (inst.open) {
+      e.preventDefault();
+      e.stopPropagation();
+      mselClose(inst);
+      inst.trigger.focus();
+    }
+    return;
+  }
+  if (k === "Tab") mselClose(inst);
+}
+
+/** 增强单个原生 <select>：复用其 .select-well 外壳，注入触发器 + body 级面板。 */
+function enhanceSelect(select) {
+  if (!select || select.dataset.msel === "1") return null;
+  const well = select.closest(".select-well");
+  if (!well) return null;
+  select.dataset.msel = "1";
+
+  const id = "msel" + ++mselSeq;
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "msel-trigger";
+  trigger.setAttribute("aria-haspopup", "listbox");
+  trigger.setAttribute("aria-expanded", "false");
+  const label = document.createElement("span");
+  label.className = "msel-label";
+  trigger.appendChild(label);
+  well.appendChild(trigger);
+
+  const list = document.createElement("div");
+  list.className = "msel-list";
+  list.id = id + "-list";
+  list.setAttribute("role", "listbox");
+  trigger.setAttribute("aria-controls", list.id);
+  // 内层滚动容器：外层承载钢框 + 黑井（position:fixed 不随内容滚动），
+  // 因此滚动选项时黑井与八边形钢框始终完整，不会被滚出。
+  const scroll = document.createElement("div");
+  scroll.className = "msel-scroll";
+  list.appendChild(scroll);
+  document.body.appendChild(list);
+
+  const inst = { id, select, well, trigger, label, list, scroll, rows: [], open: false, activeIndex: -1 };
+  mselInstances.push(inst);
+
+  // 原生 select 视觉隐藏但保留在文档流：.select-well 的宽度仍由选项文本撑出，
+  // 与替换前像素一致（若改为 position:absolute 会让外壳宽度塌缩为 0）。
+  select.setAttribute("tabindex", "-1");
+  select.setAttribute("aria-hidden", "true");
+  select.addEventListener("click", (e) => e.preventDefault());
+
+  // 实例 value setter 委托原型描述符：applySourceChoice 里的 .value = 会同步标签。
+  const proto = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value");
+  Object.defineProperty(select, "value", {
+    configurable: true,
+    enumerable: proto.enumerable,
+    get() {
+      return proto.get.call(this);
+    },
+    set(v) {
+      proto.set.call(this, v);
+      mselSync(inst);
+    },
+  });
+
+  // populateSourceSelect() 的 replaceChildren 会替换子节点 → 重建行
+  const mo = new MutationObserver(() => mselSync(inst));
+  mo.observe(select, { childList: true, subtree: true });
+
+  trigger.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (inst.open) mselClose(inst);
+    else mselOpen(inst);
+  });
+  trigger.addEventListener("keydown", (e) => mselOnTriggerKey(inst, e));
+
+  // <label class="ctl"> 包裹原生 select：点击标签文字会触发原生弹层。
+  // 拦截标签默认行为，改开自定义面板（触发器自身的点击走上面的分支）。
+  const ctlLabel = select.closest("label");
+  if (ctlLabel) {
+    ctlLabel.addEventListener("click", (e) => {
+      if (e.target.closest(".msel-trigger")) return;
+      if (e.target.closest("button, input, a, textarea")) return;
+      e.preventDefault();
+      if (inst.open) mselClose(inst);
+      else mselOpen(inst);
+      inst.trigger.focus();
+    });
+  }
+
+  mselSync(inst);
+  return inst;
+}
+
+/** 初始化全部下拉；须在 populateSourceSelect() 之后调用一次。 */
+function initMsel() {
+  [els.scale, els.bgMode, els.sourceSelect].forEach(enhanceSelect);
+
+  // 点击面板/触发器之外 → 关闭（捕获阶段，先于行点击的目标判定）
+  document.addEventListener(
+    "pointerdown",
+    (e) => {
+      for (const inst of mselInstances) {
+        if (!inst.open) continue;
+        if (inst.trigger.contains(e.target) || inst.list.contains(e.target)) continue;
+        mselClose(inst);
+      }
+    },
+    true
+  );
+
+  // 任意滚动（.backdrop / .col-left / 窗口）→ 关闭；面板内部滚动不关闭
+  window.addEventListener(
+    "scroll",
+    (e) => {
+      for (const inst of mselInstances) {
+        if (!inst.open) continue;
+        if (inst.list.contains(e.target)) continue;
+        mselClose(inst);
+      }
+    },
+    { capture: true, passive: true }
+  );
+
+  // Escape 兜底：焦点若已离开触发器（如点了面板留白）仍能关闭
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    for (const inst of mselInstances) {
+      if (!inst.open) continue;
+      mselClose(inst);
+      inst.trigger.focus();
+    }
+  });
+
+  window.addEventListener("resize", () => mselCloseAll(null));
+}
+
 // 初始化
 (async function init() {
   console.info("SchemaScope v" + APP_VERSION);
@@ -1910,6 +2227,7 @@ if (els.clearCache) {
   await loadSpriteIndex();
   setIconIndex(spriteIndex);
   populateSourceSelect();
+  initMsel();
   markActiveBadge(getChoiceKey());
   updateSourceCurrent();
   loadOpacityOpts();
