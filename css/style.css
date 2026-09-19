@@ -538,11 +538,21 @@ h1 .sub {
 }
 
 .select-well::before {
+  /* 细框：2px 钢框（内层切角 = 外层 10px + 2px 斜边补偿 → 11px，四边与斜角等宽） */
   content: "";
   position: absolute;
-  inset: 4px;
+  inset: 2px;
   background-color: var(--well);
-  clip-path: var(--oct-inset);
+  clip-path: polygon(
+    11px 2px,
+    calc(100% - 11px) 2px,
+    calc(100% - 2px) 11px,
+    calc(100% - 2px) calc(100% - 11px),
+    calc(100% - 11px) calc(100% - 2px),
+    11px calc(100% - 2px),
+    2px calc(100% - 11px),
+    2px 11px
+  );
   z-index: -1;
 }
 
@@ -551,8 +561,8 @@ h1 .sub {
   position: absolute;
   right: 11px;
   top: 50%;
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   margin-top: -4px;
   background-color: var(--accent);
   clip-path: var(--oct-dia);
