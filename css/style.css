@@ -1484,8 +1484,7 @@ html.desktop .wrap {
   transition: opacity 0.14s ease-out, transform 0.14s ease-out, visibility 0s linear 0.14s;
   isolation: isolate;
   background-color: var(--frame);
-  /* 展开面板用直角矩形（用户要求）：保留 4px 钢框 + 黑井，不做八边形切角 */
-  clip-path: none;
+  clip-path: var(--oct-btn);
   padding: 4px;
   color: var(--text);
 }
@@ -1511,9 +1510,9 @@ html.desktop .wrap {
 .msel-list::before {
   content: "";
   position: absolute;
-  inset: 4px; /* 直角 4px 钢框 */
+  inset: 0;
   background-color: var(--well);
-  clip-path: none;
+  clip-path: var(--oct-inset);
   z-index: -1;
 }
 
@@ -1569,6 +1568,24 @@ html.desktop .wrap {
 .msel-opt[aria-selected="true"] {
   background-color: var(--accent);
   color: #000;
+}
+
+/* 首项上两角 / 末项下两角跟着面板黑井一起切角：
+   row 局部 8px 的斜边（x+y=8）在面板坐标下正好是 x+y=16，即 .msel-list::before(--oct-inset) 的斜边，
+   这样高亮（悬停/当前项）的金色不会盖到 4px 钢框的斜角上。 */
+.msel-opt:first-child {
+  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%, 0 8px);
+}
+
+.msel-opt:last-child {
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px));
+}
+
+.msel-opt:only-child {
+  clip-path: polygon(
+    8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px),
+    calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px), 0 8px
+  );
 }
 
 .msel-opt[aria-selected="true"]::after {
