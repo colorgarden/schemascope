@@ -702,13 +702,18 @@ input[type="range"]:hover::-moz-range-thumb {
   background-color: var(--accent);
 }
 
-.ctl.check input:focus-visible ~ .check-box {
+/* 聚焦指示：不要矩形 outline —— 点击/聚焦时它会围着整条 label 画出方形"选中框"，
+   改为让八边形框本身变金（与悬停/选中同一套语言） */
+.ctl.check:focus-within {
+  outline: none;
+}
+
+.ctl.check:focus-within .check-box {
   background-color: var(--accent);
 }
 
-.ctl.check:focus-within {
-  outline: 2px solid var(--accent);
-  outline-offset: 4px;
+.ctl.check input:focus-visible ~ .check-box {
+  background-color: var(--accent);
 }
 
 /* 贴图源行 */

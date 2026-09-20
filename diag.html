@@ -21,13 +21,13 @@
 <button id="go">解析诊断</button>
 <pre id="out">等待…</pre>
 <script type="module">
-import { VANILLA_BLOCKS } from "./js/vanilla_blocks.js?v=20260920m";
-import { parseSchematic } from "./js/parser.js?v=20260920m";
-import { computePower, computeItemRates } from "./js/requirements.js?v=20260920m";
-import { BLOCK_REQUIREMENTS, ITEM_CN } from "./js/requirements_data.js?v=20260920m";
-import { CN_ITEMS } from "./js/cn_data.js?v=20260920m";
+import { VANILLA_BLOCKS } from "./js/vanilla_blocks.js?v=20260920n";
+import { parseSchematic } from "./js/parser.js?v=20260920n";
+import { computePower, computeItemRates } from "./js/requirements.js?v=20260920n";
+import { BLOCK_REQUIREMENTS, ITEM_CN } from "./js/requirements_data.js?v=20260920n";
+import { CN_ITEMS } from "./js/cn_data.js?v=20260920n";
 
-document.getElementById("ver").textContent = "20260920m";
+document.getElementById("ver").textContent = "20260920n";
 const probe = VANILLA_BLOCKS["silicon-smelter"] || {};
 const fields = ["powerUsage", "craftTime", "consumeItems", "outputItems"].filter((k) => probe[k] !== undefined);
 const tbl = document.getElementById("tbl");
