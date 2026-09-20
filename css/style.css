@@ -559,6 +559,12 @@ h1 .sub {
   background-color: var(--accent);
   clip-path: var(--arrow-down);
   pointer-events: none;
+  transition: transform 0.14s ease-out;
+}
+
+/* 展开时箭头翻转朝上 */
+.select-well:has([aria-expanded="true"])::after {
+  transform: rotate(180deg);
 }
 
 .select-well:hover,
@@ -1469,7 +1475,13 @@ html.desktop .wrap {
 .msel-list {
   position: fixed;
   z-index: 200;
-  display: none;
+  display: block;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(-6px) scaleY(0.92);
+  transform-origin: top center;
+  pointer-events: none;
+  transition: opacity 0.14s ease-out, transform 0.14s ease-out, visibility 0s linear 0.14s;
   isolation: isolate;
   background-color: var(--frame);
   clip-path: var(--oct-btn);
@@ -1478,7 +1490,21 @@ html.desktop .wrap {
 }
 
 .msel-list.is-open {
-  display: block;
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  transition: opacity 0.14s ease-out, transform 0.14s ease-out, visibility 0s;
+}
+
+/* 向上弹出：动画原点改到底部（原点常驻），收起方向向下；
+   translate 只写在 :not(.is-open) 上，避免与 .is-open 的 transform:none 冲突（同优先级后写者胜） */
+.msel-list.drop-up {
+  transform-origin: bottom center;
+}
+
+.msel-list.drop-up:not(.is-open) {
+  transform: translateY(6px) scaleY(0.92);
 }
 
 .msel-list::before {
@@ -1587,5 +1613,9 @@ html.desktop .wrap {
 @media (prefers-reduced-motion: reduce) {
   .src-badge.pending .src-ms::before {
     animation: none;
+  }
+  .select-well::after,
+  .msel-list {
+    transition: none;
   }
 }
