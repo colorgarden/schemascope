@@ -10,7 +10,7 @@
 // 纯逻辑，可在 Node 下单测。
 // =============================================================================
 
-import { openZip } from "./zip.js?v=20260920k";
+import { openZip } from "./zip.js?v=20260920l";
 
 /** 去掉 // 与 /* *\/ 注释（字符串感知），便于宽松解析模组 JSON。 */
 export function stripJsonComments(src) {

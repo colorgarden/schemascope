@@ -1484,7 +1484,8 @@ html.desktop .wrap {
   transition: opacity 0.14s ease-out, transform 0.14s ease-out, visibility 0s linear 0.14s;
   isolation: isolate;
   background-color: var(--frame);
-  clip-path: var(--oct-btn);
+  /* 展开面板用直角矩形（用户要求）：保留 4px 钢框 + 黑井，不做八边形切角 */
+  clip-path: none;
   padding: 4px;
   color: var(--text);
 }
@@ -1510,9 +1511,9 @@ html.desktop .wrap {
 .msel-list::before {
   content: "";
   position: absolute;
-  inset: 0;
+  inset: 4px; /* 直角 4px 钢框 */
   background-color: var(--well);
-  clip-path: var(--oct-inset);
+  clip-path: none;
   z-index: -1;
 }
 
