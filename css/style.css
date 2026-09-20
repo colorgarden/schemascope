@@ -671,12 +671,16 @@ input[type="range"]:hover::-moz-range-thumb {
 }
 
 .ctl.check input {
+  /* 真实控件铺满整条 label 接管点击：不依赖 label 的 synthetic click 转发
+     （某些引擎下 pointer-events:none + 透明控件会导致 change 不触发 → 勾选"没效果"） */
   position: absolute;
-  width: 1px;
-  height: 1px;
+  inset: 0;
+  width: auto;
+  height: auto;
   margin: 0;
   opacity: 0;
-  pointer-events: none;
+  cursor: pointer;
+  z-index: 2;
 }
 
 .check-box {

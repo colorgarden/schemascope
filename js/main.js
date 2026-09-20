@@ -10,23 +10,23 @@ import {
   AUX_PATHS,
   DEFAULT_SCALE,
   DEFAULT_PAD,
-} from "./data.js?v=20260920o";
-import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260920o";
-import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260920o";
-import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock, isAutotilerBlock, isTurretBlock, isFactoryBlock, isReconstructorBlock, factorySpriteNames, reconstructorSpriteNames, sizeOfBlock, turretSpriteNames, autotilerSpriteNames, selectMissingSprites } from "./render_rules.js?v=20260920o";
-import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260920o";
-import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260920o";
-import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260920o";
-import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260920o";
-import { requirementsList, computePower, computeItemRates, autoFixed } from "./requirements.js?v=20260920o";
-import { BLOCK_REQUIREMENTS, ITEM_CN } from "./requirements_data.js?v=20260920o";
-import { VANILLA_BLOCKS, patchVanillaDef, patchVanillaRates, patchVanillaRequirements } from "./vanilla_blocks.js?v=20260920o";
-import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260920o";
-import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260920o";
-import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260920o";
+} from "./data.js?v=20260920p";
+import { parseSchematic, extractLogic, isProcessor, isTextBlueprint, bytesToBase64 } from "./parser.js?v=20260920p";
+import { renderSchematic, getSprite, makePlaceholder, setModLayers, setModBridges, setModOutline, setModPowerBlocks, setModPowerNodes, setModColors, setModBlockDefs, staticLayerNames, isBridgeBlockName, isBridgeType, isMassDriverType, isPowerNodeType } from "./render.js?v=20260920p";
+import { spriteVariantCandidates, configSpriteNamesFor, typeOfBlock, isAutotilerBlock, isTurretBlock, isFactoryBlock, isReconstructorBlock, factorySpriteNames, reconstructorSpriteNames, sizeOfBlock, turretSpriteNames, autotilerSpriteNames, selectMissingSprites } from "./render_rules.js?v=20260920p";
+import { setIconIndex, richText, plainTextWithIcons, itemIconSrc, itemIconPath, iconCacheRelPath } from "./icons.js?v=20260920p";
+import { simpleHash, createPrefetchManager } from "./prefetch.js?v=20260920p";
+import { fetchCached, fetchMindustryCached, clearPersistentCache, cacheInfo, putMod, listMods, deleteMod, clearMods } from "./cache.js?v=20260920p";
+import { preferredSource, sourceHost, SOURCE_DEFS, getChoiceKey, setChoiceKey, probeAllSources } from "./sources.js?v=20260920p";
+import { requirementsList, computePower, computeItemRates, autoFixed } from "./requirements.js?v=20260920p";
+import { BLOCK_REQUIREMENTS, ITEM_CN } from "./requirements_data.js?v=20260920p";
+import { VANILLA_BLOCKS, patchVanillaDef, patchVanillaRates, patchVanillaRequirements } from "./vanilla_blocks.js?v=20260920p";
+import { parseMod, modSpriteCandidates, modItemCandidates, drawerStaticLayers } from "./mod.js?v=20260920p";
+import { blockDisplayName as resolveBlockDisplayName, spriteDisplayName as resolveSpriteDisplayName } from "./names.js?v=20260920p";
+import { loadHistory, saveHistory, addHistory, removeHistory, formatRelativeTime, HISTORY_MAX_INPUT } from "./history.js?v=20260920p";
 
 // 版本号：与 index.html 的入口脚本名 / ?v= / VER 保持一致（发布时递增并重命名入口）
-const APP_VERSION = "20260920o";
+const APP_VERSION = "20260920p";
 
 // -----------------------------------------------------------------------------
 // DOM
@@ -1795,6 +1795,12 @@ function quickRerender() {
   el.addEventListener("change", () => {
     readOpts();
     quickRerender();
+    // 即时反馈：确认选项已生效（网格/缩放/背景都会重绘）
+    if (el === els.grid) {
+      setStatus(els.grid.checked ? "网格：开（已重绘）。" : "网格：关（已重绘）。");
+    } else {
+      setStatus("渲染选项已更新（已重绘）。");
+    }
   })
 );
 

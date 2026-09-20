@@ -10,8 +10,8 @@
 // 本模块可在 Node 下单测：通过 setIconIndex() 注入 sprite_index.json。
 // =============================================================================
 
-import { CDN_PREFIX, LOCAL_SPRITE_DIR, BLOCK_CN, CONTENT_CN } from "./data.js?v=20260920o";
-import { ICON_BY_CODE } from "./icons_data.js?v=20260920o";
+import { CDN_PREFIX, LOCAL_SPRITE_DIR, BLOCK_CN, CONTENT_CN } from "./data.js?v=20260920p";
+import { ICON_BY_CODE } from "./icons_data.js?v=20260920p";
 
 // sprite_index.json 中贴图相对路径的基准前缀
 const SPRITE_BASE = "core/assets-raw/";
