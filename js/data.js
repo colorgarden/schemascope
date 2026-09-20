@@ -4,7 +4,7 @@
 // =============================================================================
 
 // 全量官方中文名（由 bundle_zh_CN.properties 生成）
-import { CN_BLOCKS, CN_ITEMS, CN_LIQUIDS } from "./cn_data.js?v=20260920n";
+import { CN_BLOCKS, CN_ITEMS, CN_LIQUIDS } from "./cn_data.js?v=20260920o";
 
 // CDN 前缀：只用 jsdelivr 的 @master（始终取最新贴图，允许跨域）
 export const CDN_PREFIX = "https://cdn.jsdelivr.net/gh/Anuken/Mindustry@master/";
@@ -414,6 +414,10 @@ export function spriteAliasCandidates(name) {
 }
 // 桥带 quad 宽度（游戏像素）：与带桥贴图同像素宽（贴图 32px、不透明带 24px）→ 可见带宽 24px，
 // 与两端端帽的带面无缝衔接（quad=32 时整张贴图 1:1，不压缩）。模组 bridgeWidth 覆写时按 bridgeWidth×4。
+// 网格线颜色：中性灰 + 中等 alpha —— 在「原版蓝图背景」（深色）与「透明/浅色页面」上都可见
+// （原先白色 alpha=22 在深色背景上几乎无变化，用户反馈"没有效果"）
+export const GRID_LINE = [150, 150, 150, 110];
+
 export const BRIDGE_WIDTH = 32;
 // 桥连接透明度（用户要求降低不透明度 = 更透）
 export const BRIDGE_OPACITY = 0.5;

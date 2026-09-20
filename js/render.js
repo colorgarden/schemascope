@@ -20,12 +20,13 @@ import {
   BRIDGE_BLOCKS,
   BRIDGE_RANGE,
   BRIDGE_WIDTH,
+  GRID_LINE,
   BRIDGE_OPACITY,
   BRIDGE_ARROW_SPACING,
   BRIDGE_NO_ARROW,
   BRIDGE_ARROW_OFFSET,
   TEAM_PALETTE,
-} from "./data.js?v=20260920n";
+} from "./data.js?v=20260920o";
 import {
   vanillaRule,
   rangeOfBlock,
@@ -45,8 +46,8 @@ import {
   sizeOfBlock,
   baseOf,
   isRotatableBlock,
-} from "./render_rules.js?v=20260920n";
-import { makeTileWorld, buildBlending } from "./blending.js?v=20260920n";
+} from "./render_rules.js?v=20260920o";
+import { makeTileWorld, buildBlending } from "./blending.js?v=20260920o";
 
 /** 仅取自有属性，避免方块名（如 "constructor"）撞上 Object.prototype 上的同名属性。 */
 function own(obj, key) {
@@ -608,8 +609,8 @@ export function computeLayout(schem, sprites) {
 // -----------------------------------------------------------------------------
 
 /** 每格 1px 淡网格线（对应 _draw_grid）。 */
-export function drawGrid(buf, cw, ch) {
-  const line = [255, 255, 255, 22];
+export function drawGrid(buf, cw, ch, color = GRID_LINE) {
+  const line = color;
   const xs = new Set();
   const ys = new Set();
   for (let x = 0; x < cw; x += TILE) xs.add(x);
