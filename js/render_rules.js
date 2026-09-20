@@ -25,8 +25,8 @@
 // 从而保持既有校验效果。
 // =============================================================================
 
-import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260920i";
-import { VANILLA_TURRETS } from "./vanilla_turrets.js?v=20260920i";
+import { VANILLA_BLOCKS } from "./vanilla_blocks.js?v=20260920j";
+import { VANILLA_TURRETS } from "./vanilla_turrets.js?v=20260920j";
 
 /** 仅取自有属性，避免方块名（如 "constructor"）撞上 Object.prototype 上的同名属性。 */
 function own(obj, key) {

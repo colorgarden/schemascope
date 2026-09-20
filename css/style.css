@@ -48,6 +48,7 @@
       calc(100% - 3px) calc(100% - 8px), calc(100% - 8px) calc(100% - 3px),
       8px calc(100% - 3px), 3px calc(100% - 8px), 3px 8px);
   --oct-dia: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  --arrow-down: polygon(0 0, 100% 0, 50% 100%);   /* 下拉箭头：向下实心三角 */
 }
 
 *,
@@ -550,13 +551,13 @@ h1 .sub {
 .select-well::after {
   content: "";
   position: absolute;
-  right: 11px;
+  right: 12px;
   top: 50%;
-  width: 8px;
-  height: 8px;
-  margin-top: -4px;
+  width: 10px;
+  height: 6px;
+  margin-top: -3px;
   background-color: var(--accent);
-  clip-path: var(--oct-dia);
+  clip-path: var(--arrow-down);
   pointer-events: none;
 }
 
